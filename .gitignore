@@ -53,3 +53,4 @@ xcuserdata
 
 # Docker
 docker-compose.override.yml
+frontend/.gradle_home/
