@@ -11,6 +11,7 @@ class Event {
   final bool isRegistrationOpen;
   final bool isPrivate;
   final String? inviteCode;
+  final bool allowWaitlist;
 
   Event({
     required this.id,
@@ -25,6 +26,7 @@ class Event {
     required this.isRegistrationOpen,
     this.isPrivate = false,
     this.inviteCode,
+    this.allowWaitlist = true,
   });
 
   factory Event.fromJson(Map<String, dynamic> json) {
@@ -41,6 +43,23 @@ class Event {
       isRegistrationOpen: json['isRegistrationOpen'] ?? false,
       isPrivate: json['isPrivate'] ?? false,
       inviteCode: json['inviteCode'],
+      allowWaitlist: json['allowWaitlist'] ?? true,
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        '_id': id,
+        'name': name,
+        'description': description,
+        'category': category,
+        'location': location,
+        'eventDate': eventDate.toIso8601String(),
+        'registrationDeadline': registrationDeadline.toIso8601String(),
+        'capacity': capacity,
+        'registeredCount': registeredCount,
+        'isRegistrationOpen': isRegistrationOpen,
+        'isPrivate': isPrivate,
+        'inviteCode': inviteCode,
+        'allowWaitlist': allowWaitlist,
+      };
 }

@@ -29,6 +29,8 @@ async def create_indexes() -> None:
                 [("name", TEXT), ("description", TEXT)],
                 name="events_name_description_text",
             ),
+            IndexModel([("createdBy", ASCENDING), ("isDeleted", ASCENDING)], name="events_owner_active"),
+            IndexModel([("inviteCode", ASCENDING)], unique=True, sparse=True, name="events_invite_unique"),
         ]
     )
     await database.registrations.create_indexes(
@@ -39,6 +41,10 @@ async def create_indexes() -> None:
                 name="registrations_user_event_unique",
             ),
             IndexModel([("eventId", ASCENDING)], name="registrations_event"),
+            IndexModel(
+                [("eventId", ASCENDING), ("status", ASCENDING), ("waitlistSequence", ASCENDING)],
+                name="registrations_waitlist",
+            ),
         ]
     )
     await database.tickets.create_indexes(
@@ -47,6 +53,28 @@ async def create_indexes() -> None:
                 [("registrationId", ASCENDING)],
                 unique=True,
                 name="tickets_registration_unique",
+            )
+        ]
+    )
+    await database.ticket_jobs.create_indexes(
+        [
+            IndexModel(
+                [("registrationId", ASCENDING)],
+                unique=True,
+                name="ticket_jobs_registration_unique",
+            ),
+            IndexModel(
+                [("status", ASCENDING), ("nextAttemptAt", ASCENDING)],
+                name="ticket_jobs_ready",
+            ),
+        ]
+    )
+    await database.favorites.create_indexes(
+        [
+            IndexModel(
+                [("userId", ASCENDING), ("eventId", ASCENDING)],
+                unique=True,
+                name="favorites_user_event_unique",
             )
         ]
     )

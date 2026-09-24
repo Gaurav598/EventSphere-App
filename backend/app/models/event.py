@@ -34,6 +34,7 @@ class EventBase(BaseModel):
     capacity: int = Field(gt=0, le=1_000_000)
     categoryFields: dict[str, Any] = Field(default_factory=dict)
     isPrivate: bool = False
+    allowWaitlist: bool = True
 
     _validate_datetimes = field_validator(
         "eventDate",
@@ -64,6 +65,7 @@ class EventUpdate(BaseModel):
     capacity: int | None = Field(default=None, gt=0, le=1_000_000)
     categoryFields: dict[str, Any] | None = None
     isPrivate: bool | None = None
+    allowWaitlist: bool | None = None
 
     _validate_datetimes = field_validator(
         "eventDate",
@@ -83,6 +85,8 @@ class EventInDB(EventBase):
     createdBy: PyObjectId
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    confirmedRegistrationIds: list[PyObjectId] = Field(default_factory=list)
+    nextWaitlistSequence: int = 0
 
 
 class EventResponse(EventBase):
@@ -94,3 +98,6 @@ class EventResponse(EventBase):
     createdBy: PyObjectId
     createdAt: datetime
     updatedAt: datetime
+    # Accepted for DB hydration but intentionally not exposed over the API.
+    confirmedRegistrationIds: list[PyObjectId] = Field(default_factory=list, exclude=True)
+    nextWaitlistSequence: int = Field(default=0, exclude=True)

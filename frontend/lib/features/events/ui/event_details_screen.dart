@@ -7,6 +7,8 @@ import 'package:frontend/shared/widgets/loading_view.dart';
 import 'package:frontend/shared/widgets/empty_state_view.dart';
 import 'package:frontend/shared/widgets/animated_toast.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:frontend/core/constants.dart';
 
 class EventDetailsScreen extends StatefulWidget {
   final String eventId;
@@ -65,7 +67,13 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> with SingleTick
     if (!mounted) return;
     
     if (success) {
-      AnimatedToast.show(context, message: 'Successfully registered for event!', isError: false);
+      final status = ticketProvider.lastRegistration?['status'];
+      final message = status == 'pending'
+          ? 'Registration submitted for organizer approval.'
+          : status == 'waitlisted'
+              ? 'Event is full. You joined the waitlist.'
+              : 'Registration confirmed. Your ticket is being prepared.';
+      AnimatedToast.show(context, message: message, isError: false);
       _loadEvent(); // Refresh event to get updated capacity
     } else {
       AnimatedToast.show(context, message: ticketProvider.error ?? 'Registration failed', isError: true);
@@ -158,6 +166,28 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> with SingleTick
           color: theme.brightness == Brightness.dark ? Colors.white : Colors.black,
           shadows: [Shadow(color: Colors.black.withOpacity(0.3), blurRadius: 4)],
         ),
+        actions: [
+          IconButton(
+            tooltip: context.watch<EventProvider>().isFavorite(widget.eventId) ? 'Remove favorite' : 'Save event',
+            icon: Icon(context.watch<EventProvider>().isFavorite(widget.eventId) ? Icons.bookmark : Icons.bookmark_border),
+            onPressed: () async {
+              final provider = context.read<EventProvider>();
+              final saved = await provider.toggleFavorite(widget.eventId);
+              if (!context.mounted) return;
+              AnimatedToast.show(context, message: saved ? 'Favorites updated' : 'Could not update favorites', isError: !saved);
+            },
+          ),
+          IconButton(
+            tooltip: 'Add to calendar',
+            icon: const Icon(Icons.calendar_month),
+            onPressed: () async {
+              final uri = Uri.parse('${Constants.baseUrl}/events/${widget.eventId}/calendar');
+              if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && context.mounted) {
+                AnimatedToast.show(context, message: 'Could not open calendar export', isError: true);
+              }
+            },
+          ),
+        ],
       ),
       bottomNavigationBar: Container(
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
@@ -179,14 +209,14 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> with SingleTick
               elevation: 4,
               shadowColor: theme.colorScheme.primary.withOpacity(0.4),
             ),
-            onPressed: (_event!.isRegistrationOpen && _event!.registeredCount < _event!.capacity && !ticketProvider.isLoading)
+            onPressed: (_event!.isRegistrationOpen && (_event!.registeredCount < _event!.capacity || _event!.allowWaitlist) && !ticketProvider.isLoading)
                 ? _register
                 : null,
             child: ticketProvider.isLoading
                 ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                 : Text(
                     _event!.isRegistrationOpen 
-                        ? (_event!.registeredCount < _event!.capacity ? 'REGISTER NOW' : 'EVENT FULL') 
+                        ? (_event!.registeredCount < _event!.capacity ? 'REGISTER NOW' : (_event!.allowWaitlist ? 'JOIN WAITLIST' : 'EVENT FULL'))
                         : 'REGISTRATION CLOSED',
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1),
                   ),

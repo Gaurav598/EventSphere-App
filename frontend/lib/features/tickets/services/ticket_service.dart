@@ -6,13 +6,28 @@ class TicketService {
 
   TicketService(this.dio);
 
-  Future<Ticket> registerForEvent(String eventId) async {
+  Future<Map<String, dynamic>> registerForEvent(String eventId) async {
     final response = await dio.post('/events/$eventId/register');
-    return Ticket.fromJson(response.data['data']);
+    return Map<String, dynamic>.from(response.data['data']);
   }
 
   Future<List<Ticket>> getMyTickets() async {
     final response = await dio.get('/registrations/me');
-    return (response.data['data'] as List).map((e) => Ticket.fromJson(e)).toList();
+    return (response.data['data'] as List)
+        .map((item) => Ticket.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> getIssuedTicket(String registrationId) async {
+    final response = await dio.get('/registrations/$registrationId/ticket');
+    return Map<String, dynamic>.from(response.data['data']);
+  }
+
+  Future<void> cancelRegistration(String registrationId) async {
+    await dio.delete('/registrations/$registrationId');
+  }
+
+  Future<void> retryTicket(String registrationId) async {
+    await dio.post('/registrations/$registrationId/ticket/retry');
   }
 }

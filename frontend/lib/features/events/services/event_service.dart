@@ -7,7 +7,13 @@ class EventService {
 
   EventService(this.dio);
 
-  Future<PaginatedResponse<Event>> getEvents({int page = 1, int limit = 10, String? category}) async {
+  Future<PaginatedResponse<Event>> getEvents({
+    int page = 1,
+    int limit = 10,
+    String? category,
+    DateTime? dateFrom,
+    DateTime? dateTo,
+  }) async {
     final Map<String, dynamic> queryParams = {
       'page': page,
       'limit': limit,
@@ -15,6 +21,8 @@ class EventService {
     if (category != null && category.isNotEmpty) {
       queryParams['category'] = category;
     }
+    if (dateFrom != null) queryParams['date_from'] = dateFrom.toUtc().toIso8601String();
+    if (dateTo != null) queryParams['date_to'] = dateTo.toUtc().toIso8601String();
     
     final response = await dio.get('/events', queryParameters: queryParams);
     return PaginatedResponse<Event>.fromJson(response.data, Event.fromJson);
@@ -33,5 +41,20 @@ class EventService {
   Future<Event> getEventByInviteCode(String inviteCode) async {
     final response = await dio.get('/events/invite/$inviteCode');
     return Event.fromJson(response.data['data']);
+  }
+
+  Future<List<Event>> getFavorites() async {
+    final response = await dio.get('/favorites');
+    return (response.data['data'] as List)
+        .map((item) => Event.fromJson(Map<String, dynamic>.from(item)))
+        .toList();
+  }
+
+  Future<void> setFavorite(String eventId, bool favorite) async {
+    if (favorite) {
+      await dio.post('/events/$eventId/favorite');
+    } else {
+      await dio.delete('/events/$eventId/favorite');
+    }
   }
 }

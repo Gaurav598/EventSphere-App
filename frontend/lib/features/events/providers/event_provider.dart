@@ -15,6 +15,9 @@ class EventProvider extends ChangeNotifier {
   StreamSubscription? _wsSubscription;
   String? _lastSearchQuery;
   String? _lastCategory;
+  DateTime? _dateFrom;
+  DateTime? _dateTo;
+  final Set<String> _favoriteIds = {};
 
   EventProvider(this._eventService) {
     _wsSubscription = WebSocketService().stream.listen((message) {
@@ -22,7 +25,7 @@ class EventProvider extends ChangeNotifier {
         if (_lastSearchQuery != null && _lastSearchQuery!.isNotEmpty) {
           searchEvents(_lastSearchQuery!);
         } else {
-          fetchEvents(category: _lastCategory);
+          fetchEvents(category: _lastCategory, dateFrom: _dateFrom, dateTo: _dateTo);
         }
       }
     });
@@ -38,13 +41,17 @@ class EventProvider extends ChangeNotifier {
   Pagination? get pagination => _pagination;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  Set<String> get favoriteIds => Set.unmodifiable(_favoriteIds);
+  bool isFavorite(String eventId) => _favoriteIds.contains(eventId);
 
-  Future<void> fetchEvents({String? category, int page = 1, int limit = 20}) async {
+  Future<void> fetchEvents({String? category, int page = 1, int limit = 20, DateTime? dateFrom, DateTime? dateTo}) async {
     _lastCategory = category;
+    _dateFrom = dateFrom;
+    _dateTo = dateTo;
     _lastSearchQuery = null;
     _setLoading(true);
     try {
-      final response = await _eventService.getEvents(category: category, page: page, limit: limit);
+      final response = await _eventService.getEvents(category: category, page: page, limit: limit, dateFrom: dateFrom, dateTo: dateTo);
       _events = response.data;
       _pagination = response.pagination;
       _setLoading(false);
@@ -86,13 +93,39 @@ class EventProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> fetchFavorites() async {
+    try {
+      final favorites = await _eventService.getFavorites();
+      _favoriteIds
+        ..clear()
+        ..addAll(favorites.map((event) => event.id));
+      notifyListeners();
+    } catch (_) {
+      // Discovery remains usable if favorites cannot be refreshed.
+    }
+  }
+
+  Future<bool> toggleFavorite(String eventId) async {
+    final shouldFavorite = !_favoriteIds.contains(eventId);
+    try {
+      await _eventService.setFavorite(eventId, shouldFavorite);
+      shouldFavorite ? _favoriteIds.add(eventId) : _favoriteIds.remove(eventId);
+      notifyListeners();
+      return true;
+    } catch (error) {
+      _error = error.toString();
+      notifyListeners();
+      return false;
+    }
+  }
+
   Future<Event> getEventDetails(String id) async {
     return await _eventService.getEventDetails(id);
   }
 
   void _setLoading(bool value) {
     _isLoading = value;
-    _error = null;
+    if (value) _error = null;
     notifyListeners();
   }
 }

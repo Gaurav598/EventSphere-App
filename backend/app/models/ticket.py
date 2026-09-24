@@ -12,11 +12,13 @@ class TicketBase(BaseModel):
     qrPayload: str
     qrImageRef: str
     isValid: bool = True
+    ticketVersion: int = 1
 
 
 class TicketInDB(TicketBase):
     id: PyObjectId | None = Field(alias="_id", default=None)
     generatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    invalidatedAt: datetime | None = None
 
 
 class TicketResponse(TicketInDB):

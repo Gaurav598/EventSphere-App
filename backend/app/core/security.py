@@ -84,8 +84,11 @@ def create_ticket_payload(
 ) -> str:
     claims = {
         "eventId": event_id,
+        "issuedAt": int(datetime.now(timezone.utc).timestamp()),
         "registrationId": registration_id,
+        "type": "event_ticket",
         "userId": user_id,
+        "version": 1,
     }
     canonical = json.dumps(claims, separators=(",", ":"), sort_keys=True)
     signature = hmac.new(
@@ -101,15 +104,33 @@ def create_ticket_payload(
 
 
 def verify_ticket_payload(payload: str) -> bool:
+    return decode_ticket_payload(payload) is not None
+
+
+def decode_ticket_payload(payload: str) -> dict[str, Any] | None:
     try:
         decoded = json.loads(payload)
-        signature = decoded.pop("signature")
-        canonical = json.dumps(decoded, separators=(",", ":"), sort_keys=True)
+        if not isinstance(decoded, dict):
+            return None
+        signature = decoded.get("signature")
+        if not isinstance(signature, str):
+            return None
+        claims = {key: value for key, value in decoded.items() if key != "signature"}
+        required = {"eventId", "issuedAt", "registrationId", "type", "userId", "version"}
+        if set(claims) != required or claims.get("type") != "event_ticket" or claims.get("version") != 1:
+            return None
+        if not all(isinstance(claims.get(key), str) for key in ("eventId", "registrationId", "userId")):
+            return None
+        if not isinstance(claims.get("issuedAt"), int):
+            return None
+        canonical = json.dumps(claims, separators=(",", ":"), sort_keys=True)
         expected = hmac.new(
             settings.JWT_SECRET.encode(),
             canonical.encode(),
             hashlib.sha256,
         ).hexdigest()
-        return hmac.compare_digest(signature, expected)
+        if not hmac.compare_digest(signature, expected):
+            return None
+        return claims
     except (AttributeError, KeyError, TypeError, ValueError, json.JSONDecodeError):
-        return False
+        return None

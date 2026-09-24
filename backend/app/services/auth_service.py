@@ -44,9 +44,9 @@ class AuthService:
         user = await db.users.find_one({"email": str(login_data.email).lower()})
         if not user:
             raise AppException(
-                code="USER_NOT_FOUND",
-                message="User not found",
-                status_code=404,
+                code="INVALID_CREDENTIALS",
+                message="Invalid credentials",
+                status_code=401,
             )
         if not verify_password(login_data.password, user["passwordHash"]):
             raise AppException(
