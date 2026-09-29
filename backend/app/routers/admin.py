@@ -8,7 +8,7 @@ from app.models.user import UserInDB
 from app.models.event import EventCreate, EventUpdate
 
 class StatusUpdate(BaseModel):
-    status: Literal["confirmed", "rejected"]
+    status: Literal["confirmed", "rejected", "cancelled"]
 
 class CheckinRequest(BaseModel):
     ticketPayload: str = Field(min_length=20, max_length=4096)

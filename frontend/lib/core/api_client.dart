@@ -15,6 +15,7 @@ class ApiException implements Exception {
 
 class ApiClient {
   late final Dio _dio;
+  Future<void> Function()? onUnauthorized;
 
   ApiClient() {
     _dio = Dio(BaseOptions(
@@ -37,8 +38,7 @@ class ApiClient {
       onError: (DioException e, handler) async {
         if (e.response?.statusCode == 401) {
           await SecureStorage.clearToken();
-          // The UI or AuthProvider should ideally redirect to login,
-          // but clearing token ensures they are unauthenticated.
+          await onUnauthorized?.call();
         }
         
         String errorMessage = 'An unexpected error occurred';

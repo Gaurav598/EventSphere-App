@@ -68,10 +68,16 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> register(String name, String email, String password, bool isAdmin) async {
+  Future<bool> register(String name, String email, String password, bool isAdmin, {String? organizerCode}) async {
     _setLoading(true);
     try {
-      await _authService.register(name, email, password, role: isAdmin ? 'admin' : 'user');
+      await _authService.register(
+        name,
+        email,
+        password,
+        role: isAdmin ? 'admin' : 'user',
+        organizerCode: organizerCode,
+      );
       _setLoading(false);
       return true;
     } catch (e) {
@@ -93,6 +99,15 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    await SecureStorage.clearToken();
+    await SecureStorage.clearOfflineTickets();
+    _user = null;
+    WebSocketService().disconnect();
+    notifyListeners();
+  }
+
+  Future<void> handleUnauthorized() async {
+    if (_user == null) return;
     await SecureStorage.clearToken();
     _user = null;
     WebSocketService().disconnect();
@@ -125,7 +140,7 @@ class AuthProvider extends ChangeNotifier {
 
   void _setLoading(bool value) {
     _isLoading = value;
-    _error = null;
+    if (value) _error = null;
     notifyListeners();
   }
 }

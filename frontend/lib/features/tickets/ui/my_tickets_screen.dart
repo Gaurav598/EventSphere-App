@@ -80,6 +80,7 @@ class _MyTicketsScreenState extends State<MyTicketsScreen> {
                             child: Padding(
                               padding: const EdgeInsets.all(8),
                               child: ListTile(
+                                onTap: () => context.push('/tickets/${registration.id}', extra: registration),
                                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                 title: Text(registration.event?.name ?? 'Unknown event'),
                                 subtitle: Padding(

@@ -43,13 +43,13 @@ import 'package:frontend/features/events/models/event.dart';
 
 void main() {
   final apiClient = ApiClient();
+  final authProvider = AuthProvider(AuthService(apiClient.dio));
+  apiClient.onUnauthorized = authProvider.handleUnauthorized;
 
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(
-          create: (_) => AuthProvider(AuthService(apiClient.dio)),
-        ),
+        ChangeNotifierProvider.value(value: authProvider),
         ChangeNotifierProvider(
           create: (_) => EventProvider(EventService(apiClient.dio)),
         ),
@@ -154,8 +154,10 @@ class _EventSphereAppState extends State<EventSphereApp> {
         GoRoute(
           path: '/tickets/:id',
           builder: (context, state) {
-            final ticket = state.extra as Ticket;
-            return TicketDetailsScreen(ticket: ticket);
+            final ticket = state.extra;
+            return ticket is Ticket
+                ? TicketDetailsScreen(ticket: ticket)
+                : const MyTicketsScreen();
           },
         ),
         GoRoute(

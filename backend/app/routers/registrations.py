@@ -1,13 +1,14 @@
 from fastapi import APIRouter, BackgroundTasks, Depends
+from pydantic import BaseModel, Field
 
 from app.background.ticket_queue import process_ticket_job, retry_ticket
 from app.core.identifiers import parse_object_id
 from app.db.mongo import get_database
 from app.exceptions.handlers import AppException
-from app.models.event import EventResponse
 from app.dependencies.auth import get_current_user
 from app.dependencies.rate_limit import RateLimiter
 from app.models.user import UserInDB
+from app.services.event_service import serialize_public_event
 from app.services.registration_service import RegistrationService
 
 router = APIRouter()
@@ -18,16 +19,22 @@ registration_rate_limiter = RateLimiter(
 )
 
 
+class RegistrationRequest(BaseModel):
+    inviteCode: str | None = Field(default=None, min_length=8, max_length=64)
+
+
 @router.post("/events/{event_id}/register", status_code=201)
 async def register_for_event(
     event_id: str,
     background_tasks: BackgroundTasks,
+    payload: RegistrationRequest | None = None,
     current_user: UserInDB = Depends(get_current_user),
 ):
     await registration_rate_limiter.check(str(current_user.id))
     result = await RegistrationService.register_user_for_event(
         str(current_user.id),
         event_id,
+        invite_code=payload.inviteCode if payload else None,
     )
     if result["status"] == "confirmed":
         # Fast-path only: the durable ticket_jobs record already exists.
@@ -92,7 +99,12 @@ async def retry_registration_ticket(
     )
     if not registration:
         raise AppException(code="REGISTRATION_NOT_FOUND", message="Eligible registration not found", status_code=404)
-    await retry_ticket(registration_id)
+    if not await retry_ticket(registration_id):
+        raise AppException(
+            code="TICKET_NOT_RETRYABLE",
+            message="This ticket job is not currently retryable",
+            status_code=409,
+        )
     background_tasks.add_task(process_ticket_job, registration_id)
     return {"success": True, "data": {"ticketStatus": "PENDING"}, "message": "Ticket retry queued"}
 
@@ -103,7 +115,7 @@ async def get_favorites(current_user: UserInDB = Depends(get_current_user)):
     user_id = parse_object_id(str(current_user.id), "user")
     event_ids = [doc["eventId"] async for doc in db.favorites.find({"userId": user_id}).sort("createdAt", -1)]
     events = [
-        EventResponse(**doc).model_dump(mode="json", by_alias=True)
+        serialize_public_event(doc)
         async for doc in db.events.find({"_id": {"$in": event_ids}, "isDeleted": False})
     ]
     by_id = {item["_id"]: item for item in events}

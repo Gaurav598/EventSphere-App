@@ -66,13 +66,39 @@ async def process_ticket_job(registration_id: str) -> bool:
 
     try:
         created = await generate_ticket_for_registration(registration_id)
+        registration = await db.registrations.find_one(
+            {"_id": registration_object_id},
+            {"status": 1},
+        )
+        if not registration or registration.get("status") not in {"confirmed", "checked_in"}:
+            cancelled_at = datetime.now(timezone.utc)
+            await db.tickets.update_one(
+                {"registrationId": registration_object_id, "isValid": True},
+                {"$set": {"isValid": False, "invalidatedAt": cancelled_at}},
+            )
+            await db.ticket_jobs.update_one(
+                {"_id": job["_id"]},
+                {"$set": {"status": "cancelled", "updatedAt": cancelled_at}},
+            )
+            return False
+        completed_at = datetime.now(timezone.utc)
+        registration_update = await db.registrations.update_one(
+            {"_id": registration_object_id, "status": {"$in": ["confirmed", "checked_in"]}},
+            {"$set": {"ticketStatus": "READY", "ticketError": None, "updatedAt": completed_at}},
+        )
+        if registration_update.modified_count != 1:
+            await db.tickets.update_one(
+                {"registrationId": registration_object_id, "isValid": True},
+                {"$set": {"isValid": False, "invalidatedAt": completed_at}},
+            )
+            await db.ticket_jobs.update_one(
+                {"_id": job["_id"]},
+                {"$set": {"status": "cancelled", "updatedAt": completed_at}},
+            )
+            return False
         await db.ticket_jobs.update_one(
             {"_id": job["_id"]},
-            {"$set": {"status": "completed", "completedAt": datetime.now(timezone.utc), "updatedAt": datetime.now(timezone.utc)}},
-        )
-        await db.registrations.update_one(
-            {"_id": registration_object_id},
-            {"$set": {"ticketStatus": "READY", "ticketError": None, "updatedAt": datetime.now(timezone.utc)}},
+            {"$set": {"status": "completed", "completedAt": completed_at, "updatedAt": completed_at}},
         )
         return created
     except Exception as exc:
@@ -87,14 +113,14 @@ async def process_ticket_job(registration_id: str) -> bool:
             {"$set": {"status": status, "lastError": error, "nextAttemptAt": retry_at, "updatedAt": datetime.now(timezone.utc)}},
         )
         await db.registrations.update_one(
-            {"_id": registration_object_id},
+            {"_id": registration_object_id, "status": {"$in": ["confirmed", "checked_in"]}},
             {"$set": {"ticketStatus": public_status, "ticketError": "Ticket generation will be retried" if not terminal else "Ticket generation failed", "updatedAt": datetime.now(timezone.utc)}},
         )
         logger.exception("Ticket generation failed for registration %s", registration_id)
         return False
 
 
-async def retry_ticket(registration_id: str) -> None:
+async def retry_ticket(registration_id: str) -> bool:
     db = get_database()
     registration_object_id = parse_object_id(registration_id, "registration")
     now = datetime.now(timezone.utc)
@@ -107,6 +133,8 @@ async def retry_ticket(registration_id: str) -> None:
             {"_id": registration_object_id},
             {"$set": {"ticketStatus": "PENDING", "ticketError": None, "updatedAt": now}},
         )
+        return True
+    return False
 
 
 async def recover_ticket_jobs() -> None:
@@ -119,8 +147,10 @@ async def recover_ticket_jobs() -> None:
 
 
 async def ticket_worker(stop_event: asyncio.Event | None = None) -> None:
-    await recover_ticket_jobs()
     while stop_event is None or not stop_event.is_set():
+        # Reclaim expired leases continuously so a job survives a worker/process
+        # crash even when another API replica remains running.
+        await recover_ticket_jobs()
         db = get_database()
         now = datetime.now(timezone.utc)
         job = await db.ticket_jobs.find_one(

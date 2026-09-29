@@ -14,12 +14,19 @@ class AuthService {
     return response.data['data'];
   }
 
-  Future<Map<String, dynamic>> register(String name, String email, String password, {String role = 'user'}) async {
+  Future<Map<String, dynamic>> register(
+    String name,
+    String email,
+    String password, {
+    String role = 'user',
+    String? organizerCode,
+  }) async {
     final response = await dio.post('/auth/register', data: {
       'name': name,
       'email': email,
       'password': password,
       'role': role,
+      if (organizerCode != null && organizerCode.isNotEmpty) 'organizerCode': organizerCode,
     });
     return response.data['data'];
   }

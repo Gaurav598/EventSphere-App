@@ -6,8 +6,11 @@ class TicketService {
 
   TicketService(this.dio);
 
-  Future<Map<String, dynamic>> registerForEvent(String eventId) async {
-    final response = await dio.post('/events/$eventId/register');
+  Future<Map<String, dynamic>> registerForEvent(String eventId, {String? inviteCode}) async {
+    final response = await dio.post(
+      '/events/$eventId/register',
+      data: inviteCode == null ? null : {'inviteCode': inviteCode},
+    );
     return Map<String, dynamic>.from(response.data['data']);
   }
 

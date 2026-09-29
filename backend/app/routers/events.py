@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Query
 from fastapi.responses import Response
@@ -102,8 +102,11 @@ async def get_event_by_invite(invite_code: str):
 async def export_event_calendar(event_id: str):
     event = await EventService.get_event(event_id)
     start = datetime.fromisoformat(event["eventDate"].replace("Z", "+00:00"))
+    end_value = event.get("eventEndDate")
+    end = datetime.fromisoformat(end_value.replace("Z", "+00:00")) if end_value else start + timedelta(hours=1)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     dtstart = start.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    dtend = end.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     body = "\r\n".join([
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
@@ -114,6 +117,7 @@ async def export_event_calendar(event_id: str):
         f"UID:{event['_id']}@eventsphere",
         f"DTSTAMP:{stamp}",
         f"DTSTART:{dtstart}",
+        f"DTEND:{dtend}",
         f"SUMMARY:{_ical_escape(event['name'])}",
         f"DESCRIPTION:{_ical_escape(event['description'])}",
         f"LOCATION:{_ical_escape(event['location'])}",

@@ -31,10 +31,10 @@ class TicketProvider extends ChangeNotifier {
     }
   }
 
-  Future<bool> register(String eventId) async {
+  Future<bool> register(String eventId, {String? inviteCode}) async {
     _setLoading(true);
     try {
-      _lastRegistration = await _ticketService.registerForEvent(eventId);
+      _lastRegistration = await _ticketService.registerForEvent(eventId, inviteCode: inviteCode);
       _myTickets = await _ticketService.getMyTickets();
       return true;
     } catch (error) {
@@ -54,12 +54,15 @@ class TicketProvider extends ChangeNotifier {
       _replace(complete);
       return complete;
     } catch (error) {
-      final cached = await SecureStorage.getCachedTicket(registration.id);
-      if (cached != null) {
-        final offline = Ticket.fromJson(cached);
-        _replace(offline);
-        _error = 'Showing a downloaded ticket offline. Check-in still requires server validation.';
-        return offline;
+      final serverRejectedTicket = error is DioException && error.response != null;
+      if (!serverRejectedTicket) {
+        final cached = await SecureStorage.getCachedTicket(registration.id);
+        if (cached != null) {
+          final offline = Ticket.fromJson(cached);
+          _replace(offline);
+          _error = 'Showing a downloaded ticket offline. Check-in still requires server validation.';
+          return offline;
+        }
       }
       _error = _message(error, 'Ticket is not ready yet');
       return null;

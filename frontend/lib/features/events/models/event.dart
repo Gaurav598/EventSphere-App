@@ -5,6 +5,7 @@ class Event {
   final String category;
   final String location;
   final DateTime eventDate;
+  final DateTime? eventEndDate;
   final DateTime registrationDeadline;
   final int capacity;
   final int registeredCount;
@@ -20,6 +21,7 @@ class Event {
     required this.category,
     required this.location,
     required this.eventDate,
+    this.eventEndDate,
     required this.registrationDeadline,
     required this.capacity,
     required this.registeredCount,
@@ -37,6 +39,7 @@ class Event {
       category: json['category'] ?? '',
       location: json['location'] ?? '',
       eventDate: DateTime.parse(json['eventDate'] ?? DateTime.now().toIso8601String()),
+      eventEndDate: json['eventEndDate'] == null ? null : DateTime.tryParse(json['eventEndDate']),
       registrationDeadline: DateTime.parse(json['registrationDeadline'] ?? DateTime.now().toIso8601String()),
       capacity: json['capacity'] ?? 0,
       registeredCount: json['registeredCount'] ?? 0,
@@ -54,6 +57,7 @@ class Event {
         'category': category,
         'location': location,
         'eventDate': eventDate.toIso8601String(),
+        'eventEndDate': eventEndDate?.toIso8601String(),
         'registrationDeadline': registrationDeadline.toIso8601String(),
         'capacity': capacity,
         'registeredCount': registeredCount,

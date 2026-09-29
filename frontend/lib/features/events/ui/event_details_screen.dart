@@ -63,7 +63,8 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> with SingleTick
 
   Future<void> _register() async {
     final ticketProvider = context.read<TicketProvider>();
-    final success = await ticketProvider.register(widget.eventId);
+    final inviteCode = context.read<EventProvider>().inviteCodeFor(widget.eventId);
+    final success = await ticketProvider.register(widget.eventId, inviteCode: inviteCode);
     if (!mounted) return;
     
     if (success) {
@@ -155,6 +156,9 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> with SingleTick
     final ticketProvider = context.watch<TicketProvider>();
     final theme = Theme.of(context);
     final eventDateFormatted = DateFormat('EEEE, MMMM d, y • h:mm a').format(_event!.eventDate.toLocal());
+    final eventEndFormatted = _event!.eventEndDate == null
+        ? null
+        : DateFormat('EEEE, MMMM d, y • h:mm a').format(_event!.eventEndDate!.toLocal());
 
     return Scaffold(
       extendBodyBehindAppBar: true,
@@ -302,6 +306,8 @@ class _EventDetailsScreenState extends State<EventDetailsScreen> with SingleTick
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(eventDateFormatted, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                                  if (eventEndFormatted != null)
+                                    Text('Until $eventEndFormatted', style: theme.textTheme.bodyMedium),
                                 ],
                               ),
                             ),

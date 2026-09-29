@@ -1,7 +1,9 @@
+import hmac
 from typing import Any
 
 from pymongo.errors import DuplicateKeyError
 
+from app.core.config import settings
 from app.core.security import (
     create_access_token,
     get_password_hash,
@@ -17,6 +19,14 @@ class AuthService:
     @staticmethod
     async def register_user(user_data: UserCreate) -> dict[str, Any]:
         db = get_database()
+        if user_data.role == "admin":
+            expected = settings.ORGANIZER_SIGNUP_CODE
+            if expected is None or user_data.organizerCode is None or not hmac.compare_digest(user_data.organizerCode, expected):
+                raise AppException(
+                    code="ORGANIZER_SIGNUP_FORBIDDEN",
+                    message="A valid organizer invitation code is required",
+                    status_code=403,
+                )
         email = str(user_data.email).lower()
         hashed_pw = get_password_hash(user_data.password)
         new_user = UserInDB(

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import secrets
 from datetime import datetime, timezone
 from typing import Any
 
@@ -14,9 +15,9 @@ from app.core.websocket_manager import manager
 from app.db.mongo import get_database
 from app.db.redis_client import get_redis, invalidate_event_cache
 from app.exceptions.handlers import AppException
-from app.models.event import EventResponse
 from app.models.registration import RegistrationInDB, RegistrationResponse
 from app.models.ticket import TicketResponse
+from app.services.event_service import serialize_public_event
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,11 @@ class RegistrationService:
     """Registration state machine using durable idempotency tokens for seats."""
 
     @staticmethod
-    async def register_user_for_event(user_id: str, event_id: str) -> dict[str, Any]:
+    async def register_user_for_event(
+        user_id: str,
+        event_id: str,
+        invite_code: str | None = None,
+    ) -> dict[str, Any]:
         db = get_database()
         event_object_id = parse_object_id(event_id, "event")
         user_object_id = parse_object_id(user_id, "user")
@@ -34,6 +39,16 @@ class RegistrationService:
         RegistrationService._validate_registration_window(event, now)
 
         is_private = bool(event.get("isPrivate", False))
+        if is_private and (
+            invite_code is None
+            or event.get("inviteCode") is None
+            or not secrets.compare_digest(invite_code, event["inviteCode"])
+        ):
+            raise AppException(
+                code="PRIVATE_INVITE_REQUIRED",
+                message="A valid invite code is required for this private event",
+                status_code=403,
+            )
         registration = RegistrationInDB(
             userId=user_object_id,
             eventId=event_object_id,
@@ -93,6 +108,15 @@ class RegistrationService:
                     {"$inc": {"nextWaitlistSequence": 1}},
                     return_document=ReturnDocument.AFTER,
                 )
+                if sequenced_event is None:
+                    await db.registrations.delete_one(
+                        {"_id": registration_id, "status": "processing"}
+                    )
+                    raise AppException(
+                        code="EVENT_UNAVAILABLE",
+                        message="This event is no longer available",
+                        status_code=409,
+                    )
                 sequence = sequenced_event.get("nextWaitlistSequence", 1) if sequenced_event else 1
                 await db.registrations.update_one(
                     {"_id": registration_id, "status": "processing"},
@@ -236,7 +260,7 @@ class RegistrationService:
         documents = [doc async for doc in db.registrations.find({"userId": user_object_id}).sort("registeredAt", -1)]
         event_ids = list({doc["eventId"] for doc in documents})
         events = {
-            doc["_id"]: EventResponse(**doc).model_dump(mode="json", by_alias=True)
+            doc["_id"]: serialize_public_event(doc)
             async for doc in db.events.find({"_id": {"$in": event_ids}})
         }
         result = []

@@ -31,4 +31,11 @@ class SecureStorage {
   static Future<void> removeCachedTicket(String registrationId) async {
     await _storage.delete(key: 'offline_ticket_$registrationId');
   }
+
+  static Future<void> clearOfflineTickets() async {
+    final values = await _storage.readAll();
+    for (final key in values.keys.where((key) => key.startsWith('offline_ticket_'))) {
+      await _storage.delete(key: key);
+    }
+  }
 }

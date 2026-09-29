@@ -36,6 +36,15 @@ class _EventListScreenState extends State<EventListScreen> {
   }
 
   Future<void> _refreshEvents() async {
+    final query = _searchController.text.trim();
+    if (query.isNotEmpty) {
+      await context.read<EventProvider>().searchEvents(
+        query,
+        dateFrom: _dateFrom,
+        dateTo: _dateTo,
+      );
+      return;
+    }
     await context.read<EventProvider>().fetchEvents(
       category: _selectedCategory == 'All' ? null : _selectedCategory.toLowerCase(),
       dateFrom: _dateFrom,
@@ -49,9 +58,7 @@ class _EventListScreenState extends State<EventListScreen> {
     final authProvider = context.watch<AuthProvider>();
     final themeProvider = context.watch<ThemeProvider>();
     final theme = Theme.of(context);
-    final visibleEvents = _favoritesOnly
-        ? eventProvider.events.where((event) => eventProvider.isFavorite(event.id)).toList()
-        : eventProvider.events;
+    final visibleEvents = _favoritesOnly ? eventProvider.favoriteEvents : eventProvider.events;
     
     final user = authProvider.user;
     final userName = user?.name.split(' ').first ?? 'Guest';
@@ -164,13 +171,13 @@ class _EventListScreenState extends State<EventListScreen> {
                           icon: const Icon(Icons.clear),
                           onPressed: () {
                             _searchController.clear();
-                            eventProvider.fetchEvents();
+                            _refreshEvents();
                             setState(() {});
                           },
                         ) : null,
                       ),
                       onChanged: (_) => setState(() {}),
-                      onSubmitted: (query) => eventProvider.searchEvents(query),
+                      onSubmitted: (query) => eventProvider.searchEvents(query, dateFrom: _dateFrom, dateTo: _dateTo),
                     ),
                     const SizedBox(height: 24),
                     
@@ -236,6 +243,16 @@ class _EventListScreenState extends State<EventListScreen> {
                         child: EventCard(
                           event: event,
                           onTap: () => context.push('/events/${event.id}'),
+                          isFavorite: eventProvider.isFavorite(event.id),
+                          onFavoriteToggle: () async {
+                            final updated = await context.read<EventProvider>().toggleFavorite(event.id);
+                            if (!context.mounted) return;
+                            AnimatedToast.show(
+                              context,
+                              message: updated ? 'Favorites updated' : 'Could not update favorites',
+                              isError: !updated,
+                            );
+                          },
                         ),
                       );
                     },
@@ -253,12 +270,19 @@ class _EventListScreenState extends State<EventListScreen> {
                       IconButton(
                         tooltip: 'Previous page',
                         onPressed: eventProvider.pagination!.page > 1
-                            ? () => context.read<EventProvider>().fetchEvents(
-                                  page: eventProvider.pagination!.page - 1,
-                                  category: _selectedCategory == 'All' ? null : _selectedCategory.toLowerCase(),
-                                  dateFrom: _dateFrom,
-                                  dateTo: _dateTo,
-                                )
+                            ? () => _searchController.text.trim().isNotEmpty
+                                ? context.read<EventProvider>().searchEvents(
+                                      _searchController.text.trim(),
+                                      page: eventProvider.pagination!.page - 1,
+                                      dateFrom: _dateFrom,
+                                      dateTo: _dateTo,
+                                    )
+                                : context.read<EventProvider>().fetchEvents(
+                                      page: eventProvider.pagination!.page - 1,
+                                      category: _selectedCategory == 'All' ? null : _selectedCategory.toLowerCase(),
+                                      dateFrom: _dateFrom,
+                                      dateTo: _dateTo,
+                                    )
                             : null,
                         icon: const Icon(Icons.chevron_left),
                       ),
@@ -266,12 +290,19 @@ class _EventListScreenState extends State<EventListScreen> {
                       IconButton(
                         tooltip: 'Next page',
                         onPressed: eventProvider.pagination!.page < eventProvider.pagination!.totalPages
-                            ? () => context.read<EventProvider>().fetchEvents(
-                                  page: eventProvider.pagination!.page + 1,
-                                  category: _selectedCategory == 'All' ? null : _selectedCategory.toLowerCase(),
-                                  dateFrom: _dateFrom,
-                                  dateTo: _dateTo,
-                                )
+                            ? () => _searchController.text.trim().isNotEmpty
+                                ? context.read<EventProvider>().searchEvents(
+                                      _searchController.text.trim(),
+                                      page: eventProvider.pagination!.page + 1,
+                                      dateFrom: _dateFrom,
+                                      dateTo: _dateTo,
+                                    )
+                                : context.read<EventProvider>().fetchEvents(
+                                      page: eventProvider.pagination!.page + 1,
+                                      category: _selectedCategory == 'All' ? null : _selectedCategory.toLowerCase(),
+                                      dateFrom: _dateFrom,
+                                      dateTo: _dateTo,
+                                    )
                             : null,
                         icon: const Icon(Icons.chevron_right),
                       ),

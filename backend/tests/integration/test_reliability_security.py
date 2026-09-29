@@ -32,6 +32,7 @@ async def _event(*, owner: ObjectId | None = None, capacity: int = 1, private: b
         "isRegistrationOpen": True,
         "isDeleted": False,
         "isPrivate": private,
+        "inviteCode": "PRV-RELIABLE1" if private else None,
         "allowWaitlist": waitlist,
         "createdBy": owner or ObjectId(),
         "createdAt": now,
@@ -60,8 +61,15 @@ async def test_concurrent_registration_never_exceeds_capacity():
 async def test_private_approvals_compete_for_one_seat():
     owner = ObjectId()
     event_id = await _event(owner=owner, capacity=1, private=True)
-    first = await RegistrationService.register_user_for_event(str(ObjectId()), str(event_id))
-    second = await RegistrationService.register_user_for_event(str(ObjectId()), str(event_id))
+    with pytest.raises(AppException) as exc:
+        await RegistrationService.register_user_for_event(str(ObjectId()), str(event_id))
+    assert exc.value.code == "PRIVATE_INVITE_REQUIRED"
+    first = await RegistrationService.register_user_for_event(
+        str(ObjectId()), str(event_id), invite_code="PRV-RELIABLE1"
+    )
+    second = await RegistrationService.register_user_for_event(
+        str(ObjectId()), str(event_id), invite_code="PRV-RELIABLE1"
+    )
     results = await asyncio.gather(
         AdminService.update_registration_status(first["registrationId"], "confirmed", str(owner)),
         AdminService.update_registration_status(second["registrationId"], "confirmed", str(owner)),

@@ -22,17 +22,33 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   final _capacityController = TextEditingController();
   
   DateTime? _eventDate;
+  DateTime? _eventEndDate;
   DateTime? _registrationDeadline;
   bool _isPrivate = false;
+  bool _allowWaitlist = true;
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _descController.dispose();
+    _categoryController.dispose();
+    _locationController.dispose();
+    _capacityController.dispose();
+    super.dispose();
+  }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate() || _eventDate == null || _registrationDeadline == null) {
-      AnimatedToast.show(context, message: 'Please fill all fields and select dates.', isError: true);
+    if (!_formKey.currentState!.validate() || _eventDate == null || _eventEndDate == null || _registrationDeadline == null) {
+      AnimatedToast.show(context, message: 'Please fill all fields and select event times.', isError: true);
       return;
     }
 
     if (_registrationDeadline!.isAfter(_eventDate!)) {
       AnimatedToast.show(context, message: 'Registration deadline cannot be after the event date.', isError: true);
+      return;
+    }
+    if (!_eventEndDate!.isAfter(_eventDate!)) {
+      AnimatedToast.show(context, message: 'Event end time must be after the start time.', isError: true);
       return;
     }
 
@@ -42,9 +58,11 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       "category": _categoryController.text.trim(),
       "location": _locationController.text.trim(),
       "eventDate": _eventDate!.toUtc().toIso8601String(),
+      "eventEndDate": _eventEndDate!.toUtc().toIso8601String(),
       "registrationDeadline": _registrationDeadline!.toUtc().toIso8601String(),
       "capacity": int.tryParse(_capacityController.text.trim()) ?? 0,
       "isPrivate": _isPrivate,
+      "allowWaitlist": _allowWaitlist,
     };
 
     final success = await context.read<AdminProvider>().createEvent(data);
@@ -59,23 +77,25 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     }
   }
 
-  Future<void> _pickDate(bool isEventDate) async {
+  Future<DateTime?> _pickDateTime(DateTime? current) async {
     final date = await showDatePicker(
       context: context,
-      initialDate: DateTime.now().add(const Duration(days: 1)),
+      initialDate: current ?? DateTime.now().add(const Duration(days: 1)),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
-    if (date != null) {
-      setState(() {
-        if (isEventDate) {
-          _eventDate = date;
-        } else {
-          _registrationDeadline = date;
-        }
-      });
-    }
+    if (date == null || !mounted) return null;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current ?? DateTime.now()),
+    );
+    if (time == null) return null;
+    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
+
+  String _dateLabel(String label, DateTime? value) => value == null
+      ? label
+      : '$label: ${value.day}/${value.month}/${value.year} ${TimeOfDay.fromDateTime(value).format(context)}';
 
   @override
   Widget build(BuildContext context) {
@@ -123,20 +143,30 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 validator: Validators.positiveInteger,
               ),
               const SizedBox(height: 16),
-              Row(
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _pickDate(true),
-                      child: Text(_eventDate == null ? 'Select Event Date' : 'Event: ${_eventDate!.toString().split(' ')[0]}'),
-                    ),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final value = await _pickDateTime(_eventDate);
+                      if (value != null) setState(() => _eventDate = value);
+                    },
+                    child: Text(_dateLabel('Start', _eventDate)),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _pickDate(false),
-                      child: Text(_registrationDeadline == null ? 'Select Deadline' : 'Deadline: ${_registrationDeadline!.toString().split(' ')[0]}'),
-                    ),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final value = await _pickDateTime(_eventEndDate ?? _eventDate?.add(const Duration(hours: 1)));
+                      if (value != null) setState(() => _eventEndDate = value);
+                    },
+                    child: Text(_dateLabel('End', _eventEndDate)),
+                  ),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final value = await _pickDateTime(_registrationDeadline);
+                      if (value != null) setState(() => _registrationDeadline = value);
+                    },
+                    child: Text(_dateLabel('Deadline', _registrationDeadline)),
                   ),
                 ],
               ),
@@ -146,6 +176,12 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 subtitle: const Text('Private events do not appear on the public discover page.'),
                 value: _isPrivate,
                 onChanged: (val) => setState(() => _isPrivate = val),
+              ),
+              SwitchListTile(
+                title: const Text('Enable waitlist'),
+                subtitle: const Text('Automatically promotes the earliest eligible attendee when a seat is released.'),
+                value: _allowWaitlist,
+                onChanged: (value) => setState(() => _allowWaitlist = value),
               ),
               const SizedBox(height: 32),
               ElevatedButton(

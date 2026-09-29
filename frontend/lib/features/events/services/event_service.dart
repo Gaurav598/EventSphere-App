@@ -28,8 +28,17 @@ class EventService {
     return PaginatedResponse<Event>.fromJson(response.data, Event.fromJson);
   }
 
-  Future<PaginatedResponse<Event>> searchEvents(String query, {int page = 1, int limit = 10}) async {
-    final response = await dio.get('/events/search', queryParameters: {'q': query, 'page': page, 'limit': limit});
+  Future<PaginatedResponse<Event>> searchEvents(
+    String query, {
+    int page = 1,
+    int limit = 10,
+    DateTime? dateFrom,
+    DateTime? dateTo,
+  }) async {
+    final parameters = <String, dynamic>{'q': query, 'page': page, 'limit': limit};
+    if (dateFrom != null) parameters['date_from'] = dateFrom.toUtc().toIso8601String();
+    if (dateTo != null) parameters['date_to'] = dateTo.toUtc().toIso8601String();
+    final response = await dio.get('/events/search', queryParameters: parameters);
     return PaginatedResponse<Event>.fromJson(response.data, Event.fromJson);
   }
 

@@ -1,7 +1,7 @@
 import asyncio
 import csv
 import io
-import random
+import secrets
 import string
 from datetime import datetime, timezone
 from typing import Any
@@ -80,7 +80,8 @@ class AdminService:
             createdBy=admin_obj_id,
         )
         if event.isPrivate:
-            code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+            alphabet = string.ascii_uppercase + string.digits
+            code = ''.join(secrets.choice(alphabet) for _ in range(10))
             event.inviteCode = f"PRV-{code}"
         
         event_document = event.model_dump(by_alias=True, exclude={"id"})
@@ -118,16 +119,19 @@ class AdminService:
             )
 
         merged = {
-            field: update_data.get(field, current[field])
+            field: update_data.get(field, current.get(field))
             for field in (
                 "name",
                 "description",
                 "category",
                 "location",
                 "eventDate",
+                "eventEndDate",
                 "registrationDeadline",
                 "capacity",
                 "categoryFields",
+                "isPrivate",
+                "allowWaitlist",
             )
         }
         validated = EventCreate(**merged)
@@ -181,9 +185,15 @@ class AdminService:
         db = get_database()
         event_object_id = parse_object_id(event_id, "event")
         admin_object_id = parse_object_id(admin_id, "admin")
-        event = await AdminService._get_owned_event_or_404(event_object_id, admin_object_id)
+        event = await db.events.find_one({"_id": event_object_id, "createdBy": admin_object_id})
+        if event is None:
+            raise AppException(
+                code="EVENT_NOT_FOUND",
+                message="Event not found or not owned by this organizer",
+                status_code=404,
+            )
         now = datetime.now(timezone.utc)
-        result = await db.events.update_one(
+        await db.events.update_one(
             {"_id": event_object_id, "createdBy": admin_object_id, "isDeleted": False},
             {
                 "$set": {
@@ -195,12 +205,8 @@ class AdminService:
                 }
             },
         )
-        if result.matched_count == 0:
-            raise AppException(
-                code="EVENT_NOT_FOUND",
-                message="Event not found",
-                status_code=404,
-            )
+        # If an earlier request timed out after marking the event deleted, continue
+        # the idempotent registration/ticket compensation below.
         registration_ids = [doc["_id"] async for doc in db.registrations.find({"eventId": event_object_id})]
         await db.registrations.update_many(
             {"eventId": event_object_id, "status": {"$in": ["processing", "pending", "waitlisted", "confirmed"]}},
@@ -254,11 +260,14 @@ class AdminService:
         await AdminService._get_owned_event_or_404(event_id, admin_object_id)
         
         if new_status == "confirmed":
-            claimed = await db.registrations.update_one(
-                {"_id": reg_obj_id, "status": "pending"},
-                {"$set": {"status": "processing", "updatedAt": now}},
-            )
-            if claimed.modified_count != 1:
+            if reg.get("status") == "pending":
+                claimed = await db.registrations.update_one(
+                    {"_id": reg_obj_id, "status": "pending"},
+                    {"$set": {"status": "processing", "updatedAt": now}},
+                )
+                if claimed.modified_count != 1:
+                    raise AppException(code="REGISTRATION_CONFLICT", message="Registration changed; refresh and try again", status_code=409)
+            elif reg.get("status") != "processing":
                 raise AppException(code="INVALID_STATUS", message="Only a pending registration can be approved", status_code=409)
             if not await RegistrationService._reserve_capacity(event_id, reg_obj_id):
                 await db.registrations.update_one(
@@ -278,6 +287,22 @@ class AdminService:
             )
             if result.modified_count != 1:
                 raise AppException(code="INVALID_STATUS", message="Only a pending registration can be rejected", status_code=409)
+        elif new_status == "cancelled":
+            if reg.get("status") == "checked_in":
+                raise AppException(code="ALREADY_CHECKED_IN", message="A checked-in attendee cannot be cancelled", status_code=409)
+            result = await db.registrations.update_one(
+                {"_id": reg_obj_id, "status": {"$in": ["pending", "waitlisted", "confirmed"]}},
+                {"$set": {"status": "cancelled", "cancelledAt": now, "ticketStatus": "NOT_REQUIRED", "updatedAt": now}},
+            )
+            if result.modified_count != 1:
+                raise AppException(code="INVALID_STATUS", message="This registration cannot be cancelled", status_code=409)
+            released = await RegistrationService._release_capacity(event_id, reg_obj_id)
+            await db.tickets.update_one(
+                {"registrationId": reg_obj_id, "isValid": True},
+                {"$set": {"isValid": False, "invalidatedAt": now}},
+            )
+            if released:
+                await RegistrationService.promote_waitlisted(event_id)
         
         # Broadcast the update
         import asyncio
@@ -296,7 +321,8 @@ class AdminService:
             raise AppException(code="INVALID_TICKET", message="Ticket signature is invalid", status_code=400)
         if claims["eventId"] != event_id:
             raise AppException(code="WRONG_EVENT", message="This ticket belongs to a different event", status_code=409)
-        if event.get("eventDate") and datetime.now(timezone.utc) > event["eventDate"] + settings.ticket_checkin_grace:
+        checkin_end = event.get("eventEndDate") or event.get("eventDate")
+        if checkin_end and datetime.now(timezone.utc) > checkin_end + settings.ticket_checkin_grace:
             raise AppException(code="TICKET_EXPIRED", message="The check-in window for this ticket has expired", status_code=409)
         reg_obj_id = parse_object_id(claims["registrationId"], "registration")
         reg = await db.registrations.find_one({"_id": reg_obj_id, "eventId": event_obj_id})
@@ -357,6 +383,10 @@ class AdminService:
                     "registrationId": str(document["_id"]),
                     "status": document["status"],
                     "registeredAt": document["registeredAt"].isoformat(),
+                    "updatedAt": document.get("updatedAt", document["registeredAt"]).isoformat(),
+                    "ticketStatus": document.get("ticketStatus", "NOT_REQUIRED"),
+                    "waitlistSequence": document.get("waitlistSequence"),
+                    "checkedInAt": document.get("checkedInAt").isoformat() if document.get("checkedInAt") else None,
                     "user": UserResponse(**document["user"]).model_dump(
                         mode="json",
                         by_alias=True,
@@ -374,7 +404,9 @@ class AdminService:
             [
                 "Registration ID",
                 "Status",
+                "Ticket Status",
                 "Registered At",
+                "Checked In At",
                 "User Name",
                 "User Email",
             ]
@@ -384,7 +416,9 @@ class AdminService:
                 [
                     registration["registrationId"],
                     registration["status"],
+                    registration["ticketStatus"],
                     registration["registeredAt"],
+                    registration["checkedInAt"] or "",
                     AdminService._safe_csv_cell(
                         registration["user"]["name"]
                     ),

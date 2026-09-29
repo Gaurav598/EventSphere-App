@@ -311,9 +311,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
 
   Widget _buildAnalyticsTab(AdminProvider adminProvider) {
     if (adminProvider.isAnalyticsLoading) return const LoadingView();
-    if (adminProvider.error != null) {
+    if (adminProvider.analyticsError != null) {
       return ErrorView(
-        message: adminProvider.error!,
+        message: adminProvider.analyticsError!,
         onRetry: () => adminProvider.fetchAnalytics(),
       );
     }
@@ -338,8 +338,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
             childAspectRatio: 1.2,
             children: [
               _buildStatCard('Confirmed', summary['confirmedRegistrations'].toString(), Icons.check_circle, Colors.green),
+              _buildStatCard('Checked in', summary['checkedInRegistrations'].toString(), Icons.how_to_reg, Colors.teal),
               _buildStatCard('Pending', summary['pendingRegistrations'].toString(), Icons.hourglass_empty, Colors.orange),
+              _buildStatCard('Waitlisted', summary['waitlistedRegistrations'].toString(), Icons.queue, Colors.amber.shade800),
               _buildStatCard('Rejected', summary['rejectedRegistrations'].toString(), Icons.cancel, Colors.red),
+              _buildStatCard('Cancelled', summary['cancelledRegistrations'].toString(), Icons.event_busy, Colors.redAccent),
               _buildStatCard('Total Requests', summary['totalRequests'].toString(), Icons.group, theme.colorScheme.primary),
               _buildStatCard('Acceptance', '${summary['acceptanceRate']}%', Icons.analytics, Colors.blue),
             ],

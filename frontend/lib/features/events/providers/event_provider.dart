@@ -18,12 +18,14 @@ class EventProvider extends ChangeNotifier {
   DateTime? _dateFrom;
   DateTime? _dateTo;
   final Set<String> _favoriteIds = {};
+  List<Event> _favoriteEvents = [];
+  final Map<String, String> _privateInviteCodes = {};
 
   EventProvider(this._eventService) {
     _wsSubscription = WebSocketService().stream.listen((message) {
       if (message['type'] == 'REGISTRATION_UPDATE' || message['type'] == 'EVENT_UPDATE') {
         if (_lastSearchQuery != null && _lastSearchQuery!.isNotEmpty) {
-          searchEvents(_lastSearchQuery!);
+          searchEvents(_lastSearchQuery!, dateFrom: _dateFrom, dateTo: _dateTo);
         } else {
           fetchEvents(category: _lastCategory, dateFrom: _dateFrom, dateTo: _dateTo);
         }
@@ -42,7 +44,9 @@ class EventProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   Set<String> get favoriteIds => Set.unmodifiable(_favoriteIds);
+  List<Event> get favoriteEvents => List.unmodifiable(_favoriteEvents);
   bool isFavorite(String eventId) => _favoriteIds.contains(eventId);
+  String? inviteCodeFor(String eventId) => _privateInviteCodes[eventId];
 
   Future<void> fetchEvents({String? category, int page = 1, int limit = 20, DateTime? dateFrom, DateTime? dateTo}) async {
     _lastCategory = category;
@@ -61,16 +65,18 @@ class EventProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> searchEvents(String query, {int page = 1, int limit = 20}) async {
+  Future<void> searchEvents(String query, {int page = 1, int limit = 20, DateTime? dateFrom, DateTime? dateTo}) async {
     _lastSearchQuery = query;
     _lastCategory = null;
+    _dateFrom = dateFrom;
+    _dateTo = dateTo;
     if (query.isEmpty) {
       await fetchEvents();
       return;
     }
     _setLoading(true);
     try {
-      final response = await _eventService.searchEvents(query, page: page, limit: limit);
+      final response = await _eventService.searchEvents(query, page: page, limit: limit, dateFrom: dateFrom, dateTo: dateTo);
       _events = response.data;
       _pagination = response.pagination;
       _setLoading(false);
@@ -84,6 +90,7 @@ class EventProvider extends ChangeNotifier {
     _setLoading(true);
     try {
       final event = await _eventService.getEventByInviteCode(inviteCode);
+      _privateInviteCodes[event.id] = inviteCode;
       _setLoading(false);
       return event.id;
     } catch (e) {
@@ -96,6 +103,7 @@ class EventProvider extends ChangeNotifier {
   Future<void> fetchFavorites() async {
     try {
       final favorites = await _eventService.getFavorites();
+      _favoriteEvents = favorites;
       _favoriteIds
         ..clear()
         ..addAll(favorites.map((event) => event.id));
@@ -109,8 +117,9 @@ class EventProvider extends ChangeNotifier {
     final shouldFavorite = !_favoriteIds.contains(eventId);
     try {
       await _eventService.setFavorite(eventId, shouldFavorite);
-      shouldFavorite ? _favoriteIds.add(eventId) : _favoriteIds.remove(eventId);
-      notifyListeners();
+      // Refetch the authoritative list so favorites added from private-event
+      // details (which may not exist in the discovery page) appear immediately.
+      await fetchFavorites();
       return true;
     } catch (error) {
       _error = error.toString();
