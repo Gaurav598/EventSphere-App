@@ -25,8 +25,10 @@ class _EditEventScreenState extends State<EditEventScreen> {
   late TextEditingController _capacityController;
   
   late DateTime? _eventDate;
+  late DateTime? _eventEndDate;
   late DateTime? _registrationDeadline;
   late bool _isPrivate;
+  late bool _allowWaitlist;
 
   @override
   void initState() {
@@ -37,8 +39,10 @@ class _EditEventScreenState extends State<EditEventScreen> {
     _locationController = TextEditingController(text: widget.event.location);
     _capacityController = TextEditingController(text: widget.event.capacity.toString());
     _eventDate = widget.event.eventDate;
+    _eventEndDate = widget.event.eventEndDate ?? widget.event.eventDate.add(const Duration(hours: 1));
     _registrationDeadline = widget.event.registrationDeadline;
     _isPrivate = widget.event.isPrivate;
+    _allowWaitlist = widget.event.allowWaitlist;
   }
 
   @override
@@ -52,13 +56,17 @@ class _EditEventScreenState extends State<EditEventScreen> {
   }
 
   Future<void> _submit() async {
-    if (!_formKey.currentState!.validate() || _eventDate == null || _registrationDeadline == null) {
-      AnimatedToast.show(context, message: 'Please fill all fields and select dates.', isError: true);
+    if (!_formKey.currentState!.validate() || _eventDate == null || _eventEndDate == null || _registrationDeadline == null) {
+      AnimatedToast.show(context, message: 'Please fill all fields and select event times.', isError: true);
       return;
     }
 
     if (_registrationDeadline!.isAfter(_eventDate!)) {
       AnimatedToast.show(context, message: 'Registration deadline cannot be after the event date.', isError: true);
+      return;
+    }
+    if (!_eventEndDate!.isAfter(_eventDate!)) {
+      AnimatedToast.show(context, message: 'Event end time must be after the start time.', isError: true);
       return;
     }
 
@@ -68,9 +76,11 @@ class _EditEventScreenState extends State<EditEventScreen> {
       "category": _categoryController.text.trim(),
       "location": _locationController.text.trim(),
       "eventDate": _eventDate!.toUtc().toIso8601String(),
+      "eventEndDate": _eventEndDate!.toUtc().toIso8601String(),
       "registrationDeadline": _registrationDeadline!.toUtc().toIso8601String(),
       "capacity": int.tryParse(_capacityController.text.trim()) ?? 0,
       "isPrivate": _isPrivate,
+      "allowWaitlist": _allowWaitlist,
     };
 
     final success = await context.read<AdminProvider>().updateEvent(widget.event.id, data);
@@ -85,23 +95,25 @@ class _EditEventScreenState extends State<EditEventScreen> {
     }
   }
 
-  Future<void> _pickDate(bool isEventDate) async {
+  Future<DateTime?> _pickDateTime(DateTime? current) async {
     final date = await showDatePicker(
       context: context,
-      initialDate: isEventDate ? _eventDate ?? DateTime.now() : _registrationDeadline ?? DateTime.now(),
+      initialDate: current ?? DateTime.now(),
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 365)),
     );
-    if (date != null) {
-      setState(() {
-        if (isEventDate) {
-          _eventDate = date;
-        } else {
-          _registrationDeadline = date;
-        }
-      });
-    }
+    if (date == null || !mounted) return null;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current ?? DateTime.now()),
+    );
+    if (time == null) return null;
+    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
   }
+
+  String _dateLabel(String label, DateTime? value) => value == null
+      ? label
+      : '$label: ${value.day}/${value.month}/${value.year} ${TimeOfDay.fromDateTime(value).format(context)}';
 
   @override
   Widget build(BuildContext context) {
@@ -149,20 +161,30 @@ class _EditEventScreenState extends State<EditEventScreen> {
                 validator: Validators.positiveInteger,
               ),
               const SizedBox(height: 16),
-              Row(
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _pickDate(true),
-                      child: Text(_eventDate == null ? 'Select Event Date' : 'Event: ${_eventDate!.toString().split(' ')[0]}'),
-                    ),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final value = await _pickDateTime(_eventDate);
+                      if (value != null) setState(() => _eventDate = value);
+                    },
+                    child: Text(_dateLabel('Start', _eventDate)),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _pickDate(false),
-                      child: Text(_registrationDeadline == null ? 'Select Deadline' : 'Deadline: ${_registrationDeadline!.toString().split(' ')[0]}'),
-                    ),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final value = await _pickDateTime(_eventEndDate);
+                      if (value != null) setState(() => _eventEndDate = value);
+                    },
+                    child: Text(_dateLabel('End', _eventEndDate)),
+                  ),
+                  OutlinedButton(
+                    onPressed: () async {
+                      final value = await _pickDateTime(_registrationDeadline);
+                      if (value != null) setState(() => _registrationDeadline = value);
+                    },
+                    child: Text(_dateLabel('Deadline', _registrationDeadline)),
                   ),
                 ],
               ),
@@ -172,6 +194,12 @@ class _EditEventScreenState extends State<EditEventScreen> {
                 subtitle: const Text('Private events do not appear on the public discover page.'),
                 value: _isPrivate,
                 onChanged: (val) => setState(() => _isPrivate = val),
+              ),
+              SwitchListTile(
+                title: const Text('Enable waitlist'),
+                subtitle: const Text('Promote attendees in waitlist order when seats are released.'),
+                value: _allowWaitlist,
+                onChanged: (value) => setState(() => _allowWaitlist = value),
               ),
               const SizedBox(height: 32),
               ElevatedButton(

@@ -6,11 +6,11 @@ A production-grade Event Management Platform where organizations create and mana
 
 - **FastAPI**: Selected for its asynchronous capabilities, exceptional performance, and robust type-hinting support via Pydantic, ensuring strong API contracts.
 - **MongoDB**: Used as the primary database due to its flexible document schema, making it ideal for storing dynamic event structures and scaling horizontally.
-- **Redis**: Provides high-performance in-memory caching to reduce database load on heavy read operations (e.g. browsing events) and acts as a message broker for background tasks.
+- **Redis**: Provides caching, rate limiting and best-effort realtime event publication. Durable ticket work is persisted in MongoDB and does not depend on Redis Pub/Sub delivery.
 - **Flutter**: Chosen for its single-codebase cross-platform capabilities, enabling the creation of performant, natively compiled applications for iOS, Android, and Web from one codebase.
 - **Docker**: Containerization ensures absolute consistency across development, testing, and production environments, eliminating "it works on my machine" issues.
 - **JWT (JSON Web Tokens)**: Used for stateless, secure authentication. It allows horizontal scaling of the backend API without managing session state in a centralized database.
-- **BackgroundTasks (FastAPI/Starlette)**: Utilized over Celery for lightweight, inline background processing (such as QR generation and caching). It reduces infrastructure overhead (no need for Celery workers/beat) while meeting the immediate performance needs of the application.
+- **Persistent ticket worker**: Ticket jobs are stored in MongoDB before registration responses return. An in-process worker leases and retries those jobs; FastAPI `BackgroundTasks` is only an immediate fast path.
 
 ## Tech Stack
 | Layer | Technology |
@@ -39,7 +39,7 @@ A production-grade Event Management Platform where organizations create and mana
    ```bash
    cp .env.example .env
    ```
-   *(Update `JWT_SECRET` in `.env` for production environments)*
+   Set a strong `JWT_SECRET` and a private `ORGANIZER_SIGNUP_CODE`. This upgrade is intended for local/manual verification before any production deployment.
 
 3. **Start the application:**
    ```bash
@@ -49,9 +49,9 @@ A production-grade Event Management Platform where organizations create and mana
 ## Local Development
 The `docker-compose.override.yml` is automatically used by Docker Compose to bind-mount the backend directory into the container. Code changes to the FastAPI backend will trigger an automatic reload via uvicorn.
 
-- **API Base URL**: `http://localhost:8000/api/v1`
-- **API Interactive Docs (Swagger)**: `http://localhost:8000/docs`
-- **Health Check**: `http://localhost:8000/health`
+- **API Base URL (Docker Compose)**: `http://localhost:8001/api/v1`
+- **API Interactive Docs (Swagger)**: `http://localhost:8001/docs`
+- **Health Check**: `http://localhost:8001/health`
 
 ## Testing
 
@@ -70,6 +70,10 @@ flutter test
 
 ## API Documentation
 Full API specification and architectural documentation are available in the [`docs/`](./docs) directory.
+Upgrade-specific references are in [`ARCHITECTURE.md`](./ARCHITECTURE.md),
+[`REGISTRATION_AND_TICKETING.md`](./REGISTRATION_AND_TICKETING.md),
+[`API_REFERENCE.md`](./API_REFERENCE.md), and
+[`MANUAL_TESTING_GUIDE.md`](./MANUAL_TESTING_GUIDE.md).
 
 ## Project Structure
 - `/backend`: FastAPI application source code, models, routers, and services.

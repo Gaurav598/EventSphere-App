@@ -4,7 +4,7 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     ports:
-      - "8000:8000"
+      - "8001:8000"
     env_file:
       - .env
     depends_on:
@@ -19,6 +19,17 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8085:80"
+    depends_on:
+      fastapi:
+        condition: service_healthy
+    restart: unless-stopped
 
   mongodb:
     image: mongo:7
@@ -37,7 +48,7 @@ services:
   redis:
     image: redis:7
     ports:
-      - "6379:6379"
+      - "6381:6379"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]

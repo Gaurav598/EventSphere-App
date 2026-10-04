@@ -20,6 +20,7 @@ class AdminProvider extends ChangeNotifier {
   List<dynamic> _categoryWise = [];
   List<dynamic> _monthlyTrend = [];
   bool _isAnalyticsLoading = false;
+  String? _analyticsError;
   StreamSubscription? _wsSubscription;
 
   AdminProvider(this._adminService) {
@@ -48,6 +49,7 @@ class AdminProvider extends ChangeNotifier {
   List<dynamic> get categoryWise => _categoryWise;
   List<dynamic> get monthlyTrend => _monthlyTrend;
   bool get isAnalyticsLoading => _isAnalyticsLoading;
+  String? get analyticsError => _analyticsError;
 
   int get activeEventCount => _pagination?.total ?? 0;
 
@@ -59,11 +61,7 @@ class AdminProvider extends ChangeNotifier {
       _pagination = response.pagination;
       _setLoading(false);
     } catch (e) {
-      if (e is ApiException) {
-        _error = e.message;
-      } else {
-        _error = 'Failed to fetch admin events';
-      }
+      _error = _message(e, 'Failed to fetch organizer events');
       _setLoading(false);
     }
   }
@@ -82,16 +80,7 @@ class AdminProvider extends ChangeNotifier {
       _setLoading(false);
       return true;
     } catch (e) {
-      if (e is DioException && e.response?.data != null) {
-        final data = e.response?.data;
-        if (data is Map && data['error'] is Map) {
-          _error = data['error']['message'];
-        } else {
-          _error = e.message;
-        }
-      } else {
-        _error = e.toString();
-      }
+      _error = _message(e, 'Failed to create event');
       _setLoading(false);
       return false;
     }
@@ -104,11 +93,7 @@ class AdminProvider extends ChangeNotifier {
       await fetchMyEvents();
       return true;
     } catch (e) {
-      if (e is ApiException) {
-        _error = e.message;
-      } else {
-        _error = 'Failed to update event';
-      }
+      _error = _message(e, 'Failed to update event');
       _setLoading(false);
       return false;
     }
@@ -121,11 +106,7 @@ class AdminProvider extends ChangeNotifier {
       await fetchMyEvents();
       return true;
     } catch (e) {
-      if (e is ApiException) {
-        _error = e.message;
-      } else {
-        _error = 'Failed to delete event';
-      }
+      _error = _message(e, 'Failed to delete event');
       _setLoading(false);
       return false;
     }
@@ -138,11 +119,7 @@ class AdminProvider extends ChangeNotifier {
       await fetchMyEvents();
       return true;
     } catch (e) {
-      if (e is ApiException) {
-        _error = e.message;
-      } else {
-        _error = 'Failed to close registration';
-      }
+      _error = _message(e, 'Failed to close registration');
       _setLoading(false);
       return false;
     }
@@ -150,37 +127,46 @@ class AdminProvider extends ChangeNotifier {
 
   Future<List<Map<String, dynamic>>> getEventRegistrations(String eventId) async {
     try {
-      return await _adminService.getEventRegistrations(eventId);
+      _error = null;
+      final registrations = await _adminService.getEventRegistrations(eventId);
+      _error = null;
+      return registrations;
     } catch (e) {
+      _error = e is DioException && e.error is ApiException
+          ? (e.error as ApiException).message
+          : 'Failed to load event registrations';
+      notifyListeners();
       return [];
     }
   }
 
   Future<bool> updateRegistrationStatus(String regId, String status) async {
     try {
+      _error = null;
       await _adminService.updateRegistrationStatus(regId, status);
       return true;
     } catch (e) {
-      if (e is ApiException) {
-        _error = e.message;
-      } else {
-        _error = 'Failed to update registration status';
-      }
+      _error = _message(e, 'Failed to update registration status');
       return false;
     }
   }
 
   Future<String?> exportRegistrations(String eventId) async {
     try {
+      _error = null;
       return await _adminService.exportRegistrations(eventId);
     } catch (e) {
+      _error = e is DioException && e.error is ApiException
+          ? (e.error as ApiException).message
+          : 'Failed to export registrations';
+      notifyListeners();
       return null;
     }
   }
 
   Future<void> fetchAnalytics() async {
     _isAnalyticsLoading = true;
-    _error = null;
+    _analyticsError = null;
     notifyListeners();
     try {
       final results = await Future.wait([
@@ -194,11 +180,7 @@ class AdminProvider extends ChangeNotifier {
       _categoryWise = results[2] as List<dynamic>;
       _monthlyTrend = results[3] as List<dynamic>;
     } catch (e) {
-      if (e is ApiException) {
-        _error = e.message;
-      } else {
-        _error = 'Failed to load analytics';
-      }
+      _analyticsError = _message(e, 'Failed to load analytics');
     }
     _isAnalyticsLoading = false;
     notifyListeners();
@@ -206,7 +188,15 @@ class AdminProvider extends ChangeNotifier {
 
   void _setLoading(bool value) {
     _isLoading = value;
-    _error = null;
+    if (value) _error = null;
     notifyListeners();
+  }
+
+  String _message(Object error, String fallback) {
+    if (error is DioException && error.error is ApiException) {
+      return (error.error as ApiException).message;
+    }
+    if (error is ApiException) return error.message;
+    return fallback;
   }
 }

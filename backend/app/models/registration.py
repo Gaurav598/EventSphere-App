@@ -11,12 +11,26 @@ class RegistrationBase(BaseModel):
 
     userId: PyObjectId
     eventId: PyObjectId
-    status: Literal["pending", "confirmed", "cancelled", "rejected"] = "confirmed"
+    status: Literal[
+        "processing",
+        "pending",
+        "waitlisted",
+        "confirmed",
+        "checked_in",
+        "cancelled",
+        "rejected",
+    ] = "confirmed"
 
 
 class RegistrationInDB(RegistrationBase):
     id: PyObjectId | None = Field(alias="_id", default=None)
     registeredAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    cancelledAt: datetime | None = None
+    checkedInAt: datetime | None = None
+    waitlistSequence: int | None = None
+    ticketStatus: Literal["NOT_REQUIRED", "PENDING", "READY", "FAILED", "RETRYABLE"] = "NOT_REQUIRED"
+    ticketError: str | None = None
 
 
 class RegistrationResponse(RegistrationInDB):

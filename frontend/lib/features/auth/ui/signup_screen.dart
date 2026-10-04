@@ -16,6 +16,7 @@ class _SignupScreenState extends State<SignupScreen> {
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _organizerCodeController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isAdmin = false;
   bool _isPasswordVisible = false;
@@ -29,6 +30,7 @@ class _SignupScreenState extends State<SignupScreen> {
       _emailController.text.trim(),
       _passwordController.text.trim(),
       _isAdmin,
+      organizerCode: _isAdmin ? _organizerCodeController.text.trim() : null,
     );
 
     if (!mounted) return;
@@ -39,6 +41,15 @@ class _SignupScreenState extends State<SignupScreen> {
     } else {
       AnimatedDialog.show(context, title: 'Signup Failed', message: authProvider.error ?? 'Signup failed', icon: Icons.error_outline, color: Colors.red);
     }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _organizerCodeController.dispose();
+    super.dispose();
   }
 
   @override
@@ -151,6 +162,18 @@ class _SignupScreenState extends State<SignupScreen> {
                             activeColor: Theme.of(context).colorScheme.primary,
                           ),
                         ),
+                        if (_isAdmin) ...[
+                          const SizedBox(height: 20),
+                          TextFormField(
+                            controller: _organizerCodeController,
+                            decoration: const InputDecoration(
+                              labelText: 'Organizer invitation code',
+                              prefixIcon: Icon(Icons.admin_panel_settings_outlined),
+                            ),
+                            obscureText: true,
+                            validator: _isAdmin ? Validators.requiredField : null,
+                          ),
+                        ],
                         const SizedBox(height: 40),
                         ElevatedButton(
                           onPressed: authProvider.isLoading ? null : _signup,

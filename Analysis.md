@@ -1,9 +1,7 @@
-Trail@gmail.com- Trail@11 - admin
-Trail1@gmail.com- Trail1@11
-Trail2@gmail.com- Trail2@11
-
-
 # EventSphere - Complete Engineering Analysis
+
+> Historical analysis only. Any earlier demo credentials were removed. Use
+> `MANUAL_TESTING_GUIDE.md` to create fresh local test accounts.
 
 ## 1. Executive Summary
 

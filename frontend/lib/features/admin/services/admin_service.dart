@@ -67,7 +67,7 @@ class AdminService {
     return response.data['data'] as Map<String, dynamic>;
   }
 
-  Future<void> checkinAttendee(String eventId, String registrationId) async {
-    await dio.post('/admin/events/$eventId/checkin', data: {'registrationId': registrationId});
+  Future<void> checkinAttendee(String eventId, String ticketPayload) async {
+    await dio.post('/admin/events/$eventId/checkin', data: {'ticketPayload': ticketPayload});
   }
 }

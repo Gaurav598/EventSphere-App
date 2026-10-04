@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:provider/provider.dart';
 import 'package:frontend/features/admin/services/admin_service.dart';
 import 'package:frontend/core/api_client.dart';
 import 'package:frontend/shared/widgets/animated_toast.dart';
-import 'package:go_router/go_router.dart';
 
 class QRScannerScreen extends StatefulWidget {
   final String eventId;
@@ -17,13 +15,11 @@ class QRScannerScreen extends StatefulWidget {
 
 class _QRScannerScreenState extends State<QRScannerScreen> {
   final MobileScannerController _scannerController = MobileScannerController();
-  final TextEditingController _manualController = TextEditingController();
   bool _isProcessing = false;
 
   @override
   void dispose() {
     _scannerController.dispose();
-    _manualController.dispose();
     super.dispose();
   }
 
@@ -39,7 +35,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     }
   }
 
-  Future<void> _processCheckin(String registrationId) async {
+  Future<void> _processCheckin(String ticketPayload) async {
     if (_isProcessing) return;
     setState(() {
       _isProcessing = true;
@@ -48,7 +44,7 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
     try {
       final apiClient = ApiClient();
       final adminService = AdminService(apiClient.dio);
-      await adminService.checkinAttendee(widget.eventId, registrationId);
+      await adminService.checkinAttendee(widget.eventId, ticketPayload);
       
       if (!mounted) return;
       AnimatedToast.show(context, message: 'Check-in successful!', isError: false);
@@ -71,39 +67,6 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
         _isProcessing = false;
       });
     }
-  }
-
-  void _showManualEntryDialog() {
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Manual Entry'),
-          content: TextField(
-            controller: _manualController,
-            decoration: const InputDecoration(
-              labelText: 'Registration ID',
-              hintText: 'Enter the registration ID',
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                if (_manualController.text.isNotEmpty) {
-                  _processCheckin(_manualController.text);
-                }
-              },
-              child: const Text('Check In'),
-            ),
-          ],
-        );
-      },
-    );
   }
 
   @override
@@ -137,15 +100,16 @@ class _QRScannerScreenState extends State<QRScannerScreen> {
             ),
           Positioned(
             bottom: 30,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: ElevatedButton.icon(
-                onPressed: _isProcessing ? null : _showManualEntryDialog,
-                icon: const Icon(Icons.keyboard),
-                label: const Text('Manual Entry'),
-                style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            left: 24,
+            right: 24,
+            child: Card(
+              color: Colors.black87,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  'Scan the complete EventSphere QR ticket. Registration IDs alone are not accepted.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white),
                 ),
               ),
             ),

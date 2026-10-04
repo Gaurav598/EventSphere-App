@@ -1,11 +1,16 @@
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Query
+from fastapi.responses import Response
 
 from app.exceptions.handlers import AppException
 from app.services.event_service import EventService
 
 router = APIRouter()
+
+
+def _ical_escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace(";", "\\;").replace(",", "\\,").replace("\n", "\\n")
 
 
 def _validate_filter_dates(
@@ -91,6 +96,40 @@ async def get_event_by_invite(invite_code: str):
         "data": result,
         "message": "Event details retrieved successfully",
     }
+
+
+@router.get("/{event_id}/calendar")
+async def export_event_calendar(event_id: str):
+    event = await EventService.get_event(event_id)
+    start = datetime.fromisoformat(event["eventDate"].replace("Z", "+00:00"))
+    end_value = event.get("eventEndDate")
+    end = datetime.fromisoformat(end_value.replace("Z", "+00:00")) if end_value else start + timedelta(hours=1)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    dtstart = start.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    dtend = end.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    body = "\r\n".join([
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//EventSphere//Event Calendar//EN",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "BEGIN:VEVENT",
+        f"UID:{event['_id']}@eventsphere",
+        f"DTSTAMP:{stamp}",
+        f"DTSTART:{dtstart}",
+        f"DTEND:{dtend}",
+        f"SUMMARY:{_ical_escape(event['name'])}",
+        f"DESCRIPTION:{_ical_escape(event['description'])}",
+        f"LOCATION:{_ical_escape(event['location'])}",
+        "END:VEVENT",
+        "END:VCALENDAR",
+        "",
+    ])
+    return Response(
+        content=body,
+        media_type="text/calendar",
+        headers={"Content-Disposition": f'attachment; filename="eventsphere-{event_id}.ics"'},
+    )
 
 
 @router.get("/{event_id}")

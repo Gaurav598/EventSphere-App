@@ -5,8 +5,16 @@ import 'package:frontend/features/events/models/event.dart';
 class EventCard extends StatelessWidget {
   final Event event;
   final VoidCallback onTap;
+  final bool isFavorite;
+  final VoidCallback? onFavoriteToggle;
 
-  const EventCard({super.key, required this.event, required this.onTap});
+  const EventCard({
+    super.key,
+    required this.event,
+    required this.onTap,
+    this.isFavorite = false,
+    this.onFavoriteToggle,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -43,6 +51,15 @@ class EventCard extends StatelessWidget {
                           end: Alignment.bottomCenter,
                           colors: [Colors.transparent, Colors.black54],
                         ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: IconButton.filledTonal(
+                        tooltip: isFavorite ? 'Remove favorite' : 'Save event',
+                        onPressed: onFavoriteToggle,
+                        icon: Icon(isFavorite ? Icons.bookmark : Icons.bookmark_border),
                       ),
                     ),
                     Positioned(
@@ -170,11 +187,19 @@ class EventCard extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: isFull ? null : onTap,
+                      onPressed: event.isRegistrationOpen && (!isFull || event.allowWaitlist) ? onTap : null,
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       ),
-                      child: Text(isFull ? 'SOLD OUT' : 'VIEW EVENT'),
+                      child: Text(
+                        !event.isRegistrationOpen
+                            ? 'REGISTRATION CLOSED'
+                            : isFull && event.allowWaitlist
+                                ? 'VIEW WAITLIST'
+                                : isFull
+                                    ? 'SOLD OUT'
+                                    : 'VIEW EVENT',
+                      ),
                     ),
                   ),
                 ],

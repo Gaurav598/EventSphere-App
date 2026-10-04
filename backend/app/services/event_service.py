@@ -17,6 +17,12 @@ from app.models.event import EventResponse
 logger = logging.getLogger(__name__)
 
 
+def serialize_public_event(document: dict[str, Any]) -> dict[str, Any]:
+    data = EventResponse(**document).model_dump(mode="json", by_alias=True)
+    data.pop("inviteCode", None)
+    return data
+
+
 class EventService:
     @staticmethod
     async def get_events(
@@ -86,7 +92,7 @@ class EventService:
             .limit(limit)
         )
         items = [
-            EventResponse(**document).model_dump(mode="json", by_alias=True)
+            serialize_public_event(document)
             async for document in cursor
         ]
         result = {
@@ -120,7 +126,7 @@ class EventService:
                 message="Event not found",
                 status_code=404,
             )
-        return EventResponse(**event).model_dump(mode="json", by_alias=True)
+        return serialize_public_event(event)
 
     @staticmethod
     async def get_event_by_invite_code(invite_code: str) -> dict[str, Any]:
@@ -132,7 +138,7 @@ class EventService:
                 message="Invalid invite code or event not found",
                 status_code=404,
             )
-        return EventResponse(**event).model_dump(mode="json", by_alias=True)
+        return serialize_public_event(event)
 
     @staticmethod
     async def search_events(

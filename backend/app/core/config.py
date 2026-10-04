@@ -1,3 +1,4 @@
+from datetime import timedelta
 from functools import cached_property
 from typing import Literal
 
@@ -18,6 +19,8 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_SOCKET_TIMEOUT_SECONDS: int = Field(default=2, ge=1, le=30)
     EVENT_CACHE_TTL_SECONDS: int = Field(default=300, ge=1, le=3600)
+    CHECKIN_GRACE_HOURS: int = Field(default=12, ge=0, le=168)
+    ORGANIZER_SIGNUP_CODE: str | None = Field(default=None, min_length=12)
 
     JWT_SECRET: str = Field(
         default="development-only-secret-change-before-production-0123456789",
@@ -48,6 +51,10 @@ class Settings(BaseSettings):
     @cached_property
     def allowed_hosts(self) -> list[str]:
         return [host.strip() for host in self.ALLOWED_HOSTS.split(",") if host.strip()]
+
+    @cached_property
+    def ticket_checkin_grace(self) -> timedelta:
+        return timedelta(hours=self.CHECKIN_GRACE_HOURS)
 
     @model_validator(mode="after")
     def validate_production_secrets(self) -> "Settings":

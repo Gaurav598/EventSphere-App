@@ -21,6 +21,7 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8, max_length=128)
     role: Literal["user", "admin"] = "user"
+    organizerCode: str | None = Field(default=None, min_length=12, max_length=128)
 
 
 class UserLogin(BaseModel):

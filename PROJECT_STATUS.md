@@ -1,4 +1,9 @@
-# Project Status & Engineering Audit
+# Project Status & Engineering Audit (Historical)
+
+> The scores and release verdict below predate the platform upgrade. They are not
+> current verification evidence. The upgraded implementation still requires the
+> manual validation documented in `MANUAL_TESTING_GUIDE.md`; it must not be treated
+> as production-ready solely because this historical document says so.
 
 **Audit Date**: July 6, 2026
 **Target Release**: v1.0

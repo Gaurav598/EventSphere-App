@@ -8,10 +8,10 @@ from app.models.user import UserInDB
 from app.models.event import EventCreate, EventUpdate
 
 class StatusUpdate(BaseModel):
-    status: Literal["confirmed", "rejected"]
+    status: Literal["confirmed", "rejected", "cancelled"]
 
 class CheckinRequest(BaseModel):
-    registrationId: str
+    ticketPayload: str = Field(min_length=20, max_length=4096)
 
 router = APIRouter()
 
@@ -43,7 +43,7 @@ async def create_event(event_data: EventCreate, current_admin: UserInDB = Depend
 
 @router.put("/events/{event_id}")
 async def update_event(event_id: str, event_data: EventUpdate, current_admin: UserInDB = Depends(require_admin)):
-    result = await AdminService.update_event(event_id, event_data)
+    result = await AdminService.update_event(event_id, event_data, str(current_admin.id))
     return {
         "success": True,
         "data": result,
@@ -52,7 +52,7 @@ async def update_event(event_id: str, event_data: EventUpdate, current_admin: Us
 
 @router.delete("/events/{event_id}")
 async def delete_event(event_id: str, current_admin: UserInDB = Depends(require_admin)):
-    await AdminService.delete_event(event_id)
+    await AdminService.delete_event(event_id, str(current_admin.id))
     return {
         "success": True,
         "data": None,
@@ -61,7 +61,7 @@ async def delete_event(event_id: str, current_admin: UserInDB = Depends(require_
 
 @router.patch("/events/{event_id}/close-registration")
 async def close_registration(event_id: str, current_admin: UserInDB = Depends(require_admin)):
-    await AdminService.close_registration(event_id)
+    await AdminService.close_registration(event_id, str(current_admin.id))
     return {
         "success": True,
         "data": None,
@@ -70,7 +70,7 @@ async def close_registration(event_id: str, current_admin: UserInDB = Depends(re
 
 @router.get("/events/{event_id}/registrations")
 async def get_event_registrations(event_id: str, current_admin: UserInDB = Depends(require_admin)):
-    result = await AdminService.get_event_registrations(event_id)
+    result = await AdminService.get_event_registrations(event_id, str(current_admin.id))
     return {
         "success": True,
         "data": result,
@@ -79,7 +79,7 @@ async def get_event_registrations(event_id: str, current_admin: UserInDB = Depen
 
 @router.get("/events/{event_id}/registrations/export")
 async def export_event_registrations(event_id: str, current_admin: UserInDB = Depends(require_admin)):
-    csv_data = await AdminService.export_registrations(event_id)
+    csv_data = await AdminService.export_registrations(event_id, str(current_admin.id))
     return PlainTextResponse(
         content=csv_data,
         media_type="text/csv",
@@ -92,7 +92,7 @@ async def update_registration_status(
     payload: StatusUpdate,
     current_admin: UserInDB = Depends(require_admin)
 ):
-    result = await AdminService.update_registration_status(registration_id, payload.status)
+    result = await AdminService.update_registration_status(registration_id, payload.status, str(current_admin.id))
     return {
         "success": True,
         "data": result,
@@ -105,7 +105,7 @@ async def checkin_attendee(
     payload: CheckinRequest,
     current_admin: UserInDB = Depends(require_admin)
 ):
-    result = await AdminService.checkin_attendee(event_id, payload.registrationId)
+    result = await AdminService.checkin_attendee(event_id, payload.ticketPayload, str(current_admin.id))
     return {
         "success": True,
         "data": result,
@@ -117,7 +117,7 @@ async def checkin_attendee(
 # -----------------
 @router.get("/analytics/top-events")
 async def top_events(current_admin: UserInDB = Depends(require_admin)):
-    result = await AdminService.get_top_events()
+    result = await AdminService.get_top_events(str(current_admin.id))
     return {
         "success": True,
         "data": result,
@@ -126,7 +126,7 @@ async def top_events(current_admin: UserInDB = Depends(require_admin)):
 
 @router.get("/analytics/category-wise")
 async def category_wise(current_admin: UserInDB = Depends(require_admin)):
-    result = await AdminService.get_category_wise()
+    result = await AdminService.get_category_wise(str(current_admin.id))
     return {
         "success": True,
         "data": result,
@@ -135,7 +135,7 @@ async def category_wise(current_admin: UserInDB = Depends(require_admin)):
 
 @router.get("/analytics/monthly-trend")
 async def monthly_trend(current_admin: UserInDB = Depends(require_admin)):
-    result = await AdminService.get_monthly_trend()
+    result = await AdminService.get_monthly_trend(str(current_admin.id))
     return {
         "success": True,
         "data": result,
@@ -144,7 +144,7 @@ async def monthly_trend(current_admin: UserInDB = Depends(require_admin)):
 
 @router.get("/analytics/summary")
 async def analytics_summary(current_admin: UserInDB = Depends(require_admin)):
-    result = await AdminService.get_analytics_summary()
+    result = await AdminService.get_analytics_summary(str(current_admin.id))
     return {
         "success": True,
         "data": result,

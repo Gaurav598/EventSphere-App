@@ -22,7 +22,9 @@ async def setup_db_and_redis() -> AsyncIterator[None]:
     redis_client.redis_db.client = fakeredis.aioredis.FakeRedis(
         decode_responses=True
     )
+    await redis_client.redis_db.client.flushdb()
     yield
+    await redis_client.redis_db.client.flushdb()
     await redis_client.redis_db.client.aclose()
     redis_client.redis_db.client = None
     mongo.db.client = None

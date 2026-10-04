@@ -7,7 +7,6 @@ import 'package:frontend/shared/widgets/loading_view.dart';
 import 'package:frontend/shared/widgets/error_view.dart';
 import 'package:frontend/shared/widgets/empty_state_view.dart';
 import 'package:frontend/shared/widgets/animated_confirm_dialog.dart';
-import 'package:frontend/shared/widgets/animated_confirm_dialog.dart';
 import 'package:frontend/shared/widgets/animated_toast.dart';
 import 'package:frontend/shared/widgets/event_card.dart';
 import 'package:frontend/core/theme_provider.dart';
@@ -23,18 +22,33 @@ class _EventListScreenState extends State<EventListScreen> {
   final _searchController = TextEditingController();
   String _selectedCategory = 'All';
   final List<String> _categories = ['All', 'Conference', 'Workshop', 'Meetup', 'Social', 'Other'];
+  DateTime? _dateFrom;
+  DateTime? _dateTo;
+  bool _favoritesOnly = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<EventProvider>().fetchEvents();
+      context.read<EventProvider>().fetchFavorites();
     });
   }
 
   Future<void> _refreshEvents() async {
+    final query = _searchController.text.trim();
+    if (query.isNotEmpty) {
+      await context.read<EventProvider>().searchEvents(
+        query,
+        dateFrom: _dateFrom,
+        dateTo: _dateTo,
+      );
+      return;
+    }
     await context.read<EventProvider>().fetchEvents(
       category: _selectedCategory == 'All' ? null : _selectedCategory.toLowerCase(),
+      dateFrom: _dateFrom,
+      dateTo: _dateTo,
     );
   }
 
@@ -44,6 +58,7 @@ class _EventListScreenState extends State<EventListScreen> {
     final authProvider = context.watch<AuthProvider>();
     final themeProvider = context.watch<ThemeProvider>();
     final theme = Theme.of(context);
+    final visibleEvents = _favoritesOnly ? eventProvider.favoriteEvents : eventProvider.events;
     
     final user = authProvider.user;
     final userName = user?.name.split(' ').first ?? 'Guest';
@@ -52,6 +67,11 @@ class _EventListScreenState extends State<EventListScreen> {
       appBar: AppBar(
         title: const Text('EventSphere'),
         actions: [
+          IconButton(
+            icon: Icon(_favoritesOnly ? Icons.bookmark : Icons.bookmark_border),
+            tooltip: _favoritesOnly ? 'Show all events' : 'Show favorites',
+            onPressed: () => setState(() => _favoritesOnly = !_favoritesOnly),
+          ),
           IconButton(
             icon: const Icon(Icons.vpn_key),
             tooltip: 'Join Private Event',
@@ -101,6 +121,45 @@ class _EventListScreenState extends State<EventListScreen> {
                     const SizedBox(height: 8),
                     Text('Find events that match your interests', style: theme.textTheme.bodyLarge),
                     const SizedBox(height: 24),
+
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.date_range),
+                            label: Text(_dateFrom == null ? 'Any date' : '${_dateFrom!.day}/${_dateFrom!.month}/${_dateFrom!.year} onward'),
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _dateFrom ?? DateTime.now(),
+                                firstDate: DateTime.now(),
+                                lastDate: DateTime.now().add(const Duration(days: 730)),
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  _dateFrom = picked;
+                                  _dateTo = picked.add(const Duration(days: 1));
+                                });
+                                _refreshEvents();
+                              }
+                            },
+                          ),
+                        ),
+                        if (_dateFrom != null)
+                          IconButton(
+                            tooltip: 'Clear date filter',
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              setState(() {
+                                _dateFrom = null;
+                                _dateTo = null;
+                              });
+                              _refreshEvents();
+                            },
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
                     
                     // Search Bar
                     TextField(
@@ -112,13 +171,13 @@ class _EventListScreenState extends State<EventListScreen> {
                           icon: const Icon(Icons.clear),
                           onPressed: () {
                             _searchController.clear();
-                            eventProvider.fetchEvents();
+                            _refreshEvents();
                             setState(() {});
                           },
                         ) : null,
                       ),
                       onChanged: (_) => setState(() {}),
-                      onSubmitted: (query) => eventProvider.searchEvents(query),
+                      onSubmitted: (query) => eventProvider.searchEvents(query, dateFrom: _dateFrom, dateTo: _dateTo),
                     ),
                     const SizedBox(height: 24),
                     
@@ -166,7 +225,7 @@ class _EventListScreenState extends State<EventListScreen> {
                   onRetry: _refreshEvents,
                 ),
               )
-            else if (eventProvider.events.isEmpty)
+            else if (visibleEvents.isEmpty)
               const SliverFillRemaining(
                 child: EmptyStateView(message: 'No events found for this category or search.',
                   icon: Icons.event_busy,
@@ -178,16 +237,76 @@ class _EventListScreenState extends State<EventListScreen> {
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
                     (context, index) {
-                      final event = eventProvider.events[index];
+                      final event = visibleEvents[index];
                       return Padding(
                         padding: const EdgeInsets.only(bottom: 16.0),
                         child: EventCard(
                           event: event,
                           onTap: () => context.push('/events/${event.id}'),
+                          isFavorite: eventProvider.isFavorite(event.id),
+                          onFavoriteToggle: () async {
+                            final updated = await context.read<EventProvider>().toggleFavorite(event.id);
+                            if (!context.mounted) return;
+                            AnimatedToast.show(
+                              context,
+                              message: updated ? 'Favorites updated' : 'Could not update favorites',
+                              isError: !updated,
+                            );
+                          },
                         ),
                       );
                     },
-                    childCount: eventProvider.events.length,
+                    childCount: visibleEvents.length,
+                  ),
+                ),
+              ),
+            if (!_favoritesOnly && eventProvider.pagination != null && eventProvider.pagination!.totalPages > 1)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        tooltip: 'Previous page',
+                        onPressed: eventProvider.pagination!.page > 1
+                            ? () => _searchController.text.trim().isNotEmpty
+                                ? context.read<EventProvider>().searchEvents(
+                                      _searchController.text.trim(),
+                                      page: eventProvider.pagination!.page - 1,
+                                      dateFrom: _dateFrom,
+                                      dateTo: _dateTo,
+                                    )
+                                : context.read<EventProvider>().fetchEvents(
+                                      page: eventProvider.pagination!.page - 1,
+                                      category: _selectedCategory == 'All' ? null : _selectedCategory.toLowerCase(),
+                                      dateFrom: _dateFrom,
+                                      dateTo: _dateTo,
+                                    )
+                            : null,
+                        icon: const Icon(Icons.chevron_left),
+                      ),
+                      Text('Page ${eventProvider.pagination!.page} of ${eventProvider.pagination!.totalPages}'),
+                      IconButton(
+                        tooltip: 'Next page',
+                        onPressed: eventProvider.pagination!.page < eventProvider.pagination!.totalPages
+                            ? () => _searchController.text.trim().isNotEmpty
+                                ? context.read<EventProvider>().searchEvents(
+                                      _searchController.text.trim(),
+                                      page: eventProvider.pagination!.page + 1,
+                                      dateFrom: _dateFrom,
+                                      dateTo: _dateTo,
+                                    )
+                                : context.read<EventProvider>().fetchEvents(
+                                      page: eventProvider.pagination!.page + 1,
+                                      category: _selectedCategory == 'All' ? null : _selectedCategory.toLowerCase(),
+                                      dateFrom: _dateFrom,
+                                      dateTo: _dateTo,
+                                    )
+                            : null,
+                        icon: const Icon(Icons.chevron_right),
+                      ),
+                    ],
                   ),
                 ),
               ),

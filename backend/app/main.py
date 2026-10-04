@@ -8,6 +8,7 @@ from redis.exceptions import RedisError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.background.registration_subscriber import consume_registration_events
+from app.background.ticket_queue import ticket_worker
 from app.core.config import settings
 from app.core.logging import setup_logging
 from app.db.mongo import (
@@ -33,11 +34,20 @@ async def lifespan(app: FastAPI):
     await connect_to_mongo()
     await connect_to_redis()
     subscriber_task = None
+    ticket_stop_event = asyncio.Event()
+    ticket_worker_task = asyncio.create_task(ticket_worker(ticket_stop_event))
     if get_redis() is not None:
         subscriber_task = asyncio.create_task(consume_registration_events())
     try:
         yield
     finally:
+        ticket_stop_event.set()
+        with suppress(asyncio.TimeoutError):
+            await asyncio.wait_for(ticket_worker_task, timeout=3)
+        if not ticket_worker_task.done():
+            ticket_worker_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await ticket_worker_task
         if subscriber_task is not None:
             subscriber_task.cancel()
             with suppress(asyncio.CancelledError):

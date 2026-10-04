@@ -30,13 +30,16 @@ class EventBase(BaseModel):
     category: str = Field(min_length=2, max_length=50)
     location: str = Field(min_length=2, max_length=250)
     eventDate: datetime
+    eventEndDate: datetime | None = None
     registrationDeadline: datetime
     capacity: int = Field(gt=0, le=1_000_000)
     categoryFields: dict[str, Any] = Field(default_factory=dict)
     isPrivate: bool = False
+    allowWaitlist: bool = True
 
     _validate_datetimes = field_validator(
         "eventDate",
+        "eventEndDate",
         "registrationDeadline",
         mode="after",
     )(_ensure_timezone)
@@ -45,6 +48,8 @@ class EventBase(BaseModel):
     def validate_deadline(self) -> "EventBase":
         if self.registrationDeadline > self.eventDate:
             raise ValueError("registrationDeadline cannot be after eventDate")
+        if self.eventEndDate is not None and self.eventEndDate <= self.eventDate:
+            raise ValueError("eventEndDate must be after eventDate")
         return self
 
 
@@ -60,13 +65,16 @@ class EventUpdate(BaseModel):
     category: str | None = Field(default=None, min_length=2, max_length=50)
     location: str | None = Field(default=None, min_length=2, max_length=250)
     eventDate: datetime | None = None
+    eventEndDate: datetime | None = None
     registrationDeadline: datetime | None = None
     capacity: int | None = Field(default=None, gt=0, le=1_000_000)
     categoryFields: dict[str, Any] | None = None
     isPrivate: bool | None = None
+    allowWaitlist: bool | None = None
 
     _validate_datetimes = field_validator(
         "eventDate",
+        "eventEndDate",
         "registrationDeadline",
         mode="after",
     )(
@@ -83,6 +91,8 @@ class EventInDB(EventBase):
     createdBy: PyObjectId
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    confirmedRegistrationIds: list[PyObjectId] = Field(default_factory=list)
+    nextWaitlistSequence: int = 0
 
 
 class EventResponse(EventBase):
@@ -94,3 +104,6 @@ class EventResponse(EventBase):
     createdBy: PyObjectId
     createdAt: datetime
     updatedAt: datetime
+    # Accepted for DB hydration but intentionally not exposed over the API.
+    confirmedRegistrationIds: list[PyObjectId] = Field(default_factory=list, exclude=True)
+    nextWaitlistSequence: int = Field(default=0, exclude=True)
